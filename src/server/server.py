@@ -25,10 +25,11 @@ class TaskInterpreter:
             print("Erro ao decodificar o arquivo JSON.")
     
     def process_tasks(self):
-        """
-        Processa as tarefas carregadas, exibindo informações detalhadas sobre cada tarefa,
-        incluindo dispositivos, métricas e condições de alerta.
-        """
+    
+    #Processa as tarefas carregadas, exibindo informações detalhadas sobre cada tarefa,
+    #incluindo dispositivos, métricas e condições de alerta. Em seguida, executa as tarefas
+    #no servidor ou envia para o cliente conforme necessário.
+    
         if not self.tasks:
             print("Nenhuma tarefa para processar.")
             return
@@ -49,7 +50,7 @@ class TaskInterpreter:
                 alertflow_conditions = device.get("alertflow_conditions", {})
 
                 print("  Dispositivo:", device_id)
-                
+
                 # Processa métricas do dispositivo, como uso de CPU e RAM
                 for metric, enabled in device_metrics.items():
                     if enabled:
@@ -62,6 +63,38 @@ class TaskInterpreter:
                 # Processa as condições de alerta
                 for condition, limit in alertflow_conditions.items():
                     print("    Condição de alerta:", condition, ">=", limit)
+
+                # Decide se a tarefa deve ser executada no servidor ou enviada para o cliente
+                if device_id == 'server':
+                    print("Executando tarefa '{}' localmente no servidor para o dispositivo {}".format(task_id, device_id))
+                    self.run_local_task(device)
+                else:
+                    print("Enviando tarefa '{}' para o dispositivo {}".format(task_id, device_id))
+                    self.send_task_to_client(device)
+
+    def run_local_task(self, device):
+        #Executa a tarefa no servidor usando comandos do sistema.
+        if device['device_metrics'].get('cpu_usage'):
+            print("Monitorando uso de CPU...")
+            # Exemplo de execução local: subprocess.run(["top", "-b", "-n", "1"])
+
+        if device['device_metrics'].get('ram_usage'):
+            print("Monitorando uso de RAM...")
+            # Exemplo de execução local: subprocess.run(["free", "-h"])
+
+        # Adicione mais comandos conforme necessário
+
+    def send_task_to_client(self, device): #PRECISO ALTERAR AQUI PARA FAZER DISTINÇÃO ENTRE OS PCS
+        """
+        Envia a tarefa para um cliente via UDP.
+        """
+        client_ip = '10.0.0.11'  # IP do cliente (alterar conforme necessário)
+        client_port = 38  # Porta do cliente (alterar conforme necessário)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_client_socket:
+            message = json.dumps(device)
+            udp_client_socket.sendto(message.encode(), (client_ip, client_port))
+            print("Tarefa enviada para {}:{}".format(client_ip, client_port)) 
 
 class Server:
     def __init__(self, host='10.0.0.10', port=38, task_file='/home/core/Desktop/Uni/CC/CC-Grupo5/src/tasks.json'):
