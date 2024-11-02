@@ -1,0 +1,92 @@
+{
+    "tasks": [
+        {
+            "task_id": "task-001",
+            "frequency": 30,
+            "devices": [
+                {
+                    "device_id": "router-1",
+                    "device_metrics": {
+                        "cpu_usage": true,
+                        "ram_usage": true,
+                        "interface_stats": ["eth0", "eth1"]
+                    },
+                    "link_metrics": {
+                        "bandwidth": {
+                            "tool": "iperf",
+                            "role": "client",
+                            "server_ip": "192.168.1.1",
+                            "duration": 10,
+                            "transport": "tcp",
+                            "frequency": 15
+                        },
+                        "jitter": {
+                            "tool": "iperf",
+                            "duration": 10,
+                            "frequency": 15
+                        },
+                        "packet_loss": {
+                            "tool": "iperf",
+                            "duration": 10,
+                            "frequency": 15
+                        },
+                        "latency": {
+                            "tool": "ping",
+                            "destination": "8.8.8.8",
+                            "packet_count": 4,
+                            "frequency": 20
+                        }
+                    },
+                    "alertflow_conditions": {
+                        "cpu_usage": 80,
+                        "ram_usage": 85,
+                        "interface_stats": 2000,
+                        "packet_loss": 5,
+                        "jitter": 100
+                    }
+                },
+                {
+                    "device_id": "router-2",
+                    "device_metrics": {
+                        "cpu_usage": true,
+                        "ram_usage": false,
+                        "interface_stats": ["eth2"]
+                    },
+                    "link_metrics": {
+                        "bandwidth": {
+                            "tool": "iperf",
+                            "role": "server",
+                            "server_ip": "192.168.1.2",
+                            "duration": 15,
+                            "transport": "udp",
+                            "frequency": 25
+                        },
+                        "jitter": {
+                            "tool": "iperf",
+                            "duration": 10,
+                            "frequency": 15
+                        },
+                        "packet_loss": {
+                            "tool": "iperf",
+                            "duration": 10,
+                            "frequency": 15
+                        },
+                        "latency": {
+                            "tool": "ping",
+                            "destination": "1.1.1.1",
+                            "packet_count": 5,
+                            "frequency": 30
+                        }
+                    },
+                    "alertflow_conditions": {
+                        "cpu_usage": 75,
+                        "ram_usage": 90,
+                        "interface_stats": 1500,
+                        "packet_loss": 3,
+                        "jitter": 80
+                    }
+                }
+            ]
+        }
+    ]
+}
