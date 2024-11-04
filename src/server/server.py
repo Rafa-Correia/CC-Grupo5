@@ -1,175 +1,86 @@
 import socket
 import json
+import threading
+import os
 
 class TaskInterpreter:
+    
     def __init__(self, file_path):
-        """
-        Inicializa o interpretador de tarefas com o caminho para o arquivo JSON.
-        """
         self.file_path = file_path
-        self.tasks = []
-
+        self.devices = []
+    
     def load_tasks(self):
-        """
-        Carrega as tarefas do arquivo JSON. Se o arquivo não for encontrado ou estiver corrompido,
-        uma mensagem de erro será exibida.
-        """
         try:
             with open(self.file_path, 'r') as file:
                 data = json.load(file)
-                self.tasks = data.get('tasks', [])
-                print("Tarefas carregadas com sucesso.")
+                tasks = data.get('tasks', [])
+                for task in tasks:
+                    self.devices.extend(task.get("devices", []))
+                print("[INFO] Devices successfully loaded.")
         except FileNotFoundError:
-            print("Arquivo não encontrado:", self.file_path)
+            print("[ERROR] File not found:", self.file_path)
         except json.JSONDecodeError:
-            print("Erro ao decodificar o arquivo JSON.")
+            print("[ERROR] Failed to decode the JSON file.")
     
-    def process_tasks(self):
-    
-    #Processa as tarefas carregadas, exibindo informações detalhadas sobre cada tarefa,
-    #incluindo dispositivos, métricas e condições de alerta. Em seguida, executa as tarefas
-    #no servidor ou envia para o cliente conforme necessário.
-    
-        if not self.tasks:
-            print("Nenhuma tarefa para processar.")
-            return
-
-        for task in self.tasks:
-            # Extrai informações da tarefa principal
-            task_id = task.get("task_id")
-            frequency = task.get("frequency")
-            devices = task.get("devices", [])
-
-            print("Processando tarefa: Task ID =", task_id, "Frequência =", frequency, "segundos")
-
-            for device in devices:
-                # Extrai informações específicas do dispositivo
-                device_id = device.get("device_id")
-                device_metrics = device.get("device_metrics", {})
-                link_metrics = device.get("link_metrics", {})
-                alertflow_conditions = device.get("alertflow_conditions", {})
-
-                print("  Dispositivo:", device_id)
-
-                # Processa métricas do dispositivo, como uso de CPU e RAM
-                for metric, enabled in device_metrics.items():
-                    if enabled:
-                        print("    Monitorando métrica de dispositivo:", metric)
-
-                # Processa métricas de link, como largura de banda e jitter
-                for metric, config in link_metrics.items():
-                    print("    Métrica de link:", metric, "Configuração:", config)
-
-                # Processa as condições de alerta
-                for condition, limit in alertflow_conditions.items():
-                    print("    Condição de alerta:", condition, ">=", limit)
-
-                # Decide se a tarefa deve ser executada no servidor ou enviada para o cliente
-                if device_id == 'server':
-                    print("Executando tarefa '{}' localmente no servidor para o dispositivo {}".format(task_id, device_id))
-                    self.run_local_task(device)
-                else:
-                    print("Enviando tarefa '{}' para o dispositivo {}".format(task_id, device_id))
-                    self.send_task_to_client(device)
-
-    def run_local_task(self, device):
-        #Executa a tarefa no servidor usando comandos do sistema.
-        if device['device_metrics'].get('cpu_usage'):
-            print("Monitorando uso de CPU...")
-            # Exemplo de execução local: subprocess.run(["top", "-b", "-n", "1"])
-
-        if device['device_metrics'].get('ram_usage'):
-            print("Monitorando uso de RAM...")
-            # Exemplo de execução local: subprocess.run(["free", "-h"])
-
-        # Adicione mais comandos conforme necessário
-
-    def send_task_to_client(self, device): #PRECISO ALTERAR AQUI PARA FAZER DISTINÇÃO ENTRE OS PCS
-        """
-        Envia a tarefa para um cliente via UDP.
-        """
-        client_ip = '10.0.0.11'  # IP do cliente (alterar conforme necessário)
-        client_port = 38  # Porta do cliente (alterar conforme necessário)
-
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_client_socket:
-            message = json.dumps(device)
-            udp_client_socket.sendto(message.encode(), (client_ip, client_port))
-            print("Tarefa enviada para {}:{}".format(client_ip, client_port)) 
+    def get_device_metrics(self, device_index):
+        if not self.devices or device_index >= len(self.devices):
+            return "[INFO] No device to process for this client."
+        device = self.devices[device_index]
+        device_id = device.get("device_id")
+        device_metrics = device.get("device_metrics", {})
+        alertflow_conditions = device.get("alertflow_conditions", {})
+        device_info = f"Device: {device_id}\n"
+        device_info += "  Metrics:\n"
+        device_info += f"    - CPU Usage: {device_metrics.get('cpu_usage')}\n"
+        device_info += f"    - RAM Usage: {device_metrics.get('ram_usage')}\n"
+        device_info += f"    - Interface Stats: {device_metrics.get('interface_stats')}\n"
+        device_info += "  Alert Conditions:\n"
+        for condition, value in alertflow_conditions.items():
+            device_info += f"    - {condition}: {value}\n"
+        return device_info
 
 class Server:
-    def __init__(self, host='10.0.0.10', port=38, task_file='/home/core/Desktop/Uni/CC/CC-Grupo5/src/tasks.json'):
-        """
-        Inicializa o servidor com o endereço e a porta especificados, e configura o interpretador de tarefas.
-        """
+
+    def __init__(self, host, port, task_file_path):
         self.host = host
         self.port = port
-        self.task_interpreter = TaskInterpreter(task_file)
+        self.task_interpreter = TaskInterpreter(task_file_path)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.lock = threading.Lock()
+        self.client_map = {}
 
-    def start_udp_server_with_ack(self):
-        """
-        Inicia o servidor UDP, carrega e processa as tarefas do JSON e responde com ACK para
-        mensagens recebidas dos clientes.
-        """
-        # Carrega e processa as tarefas antes de iniciar o servidor
+    def start(self):
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(5)
+        print(f"[SERVER] Server started and listening on {self.host}:{self.port}")
         self.task_interpreter.load_tasks()
-        self.task_interpreter.process_tasks()
-
-        # Configura o socket UDP
-        udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_server_socket.bind((self.host, self.port))
-
-        print("Servidor ouvindo em", self.host, ":", self.port)
-
         while True:
-            # Recebe dados do cliente
-            data, addr = udp_server_socket.recvfrom(1024)
-            message = data.decode()
-            print("Mensagem recebida de", addr, ":", message)
+            client_socket, client_address = self.server_socket.accept()
+            print(f"[CONNECTION] New connection from {client_address}")
+            client_thread = threading.Thread(target=self.handle_client, args=(client_socket, client_address))
+            client_thread.start()
 
-            # Extrai o número de sequência para enviar o ACK correspondente
-            if "Seq:" in message:
-                seq_num = message.split(":")[1].split(" - ")[0]
-                print("Número de sequência recebido:", seq_num)
-
-                # Envia um ACK de volta para o cliente
-                ack_message = "ACK:" + seq_num
-                udp_server_socket.sendto(ack_message.encode(), addr)
+    def handle_client(self, client_socket, client_address):
+        try:
+            with self.lock:
+                if client_address not in self.client_map:
+                    # Assign a new device index if this client is new
+                    self.client_map[client_address] = len(self.client_map)
+            device_index = self.client_map[client_address]
+            while True:
+                device_info = self.task_interpreter.get_device_metrics(device_index)
+                client_socket.send(device_info.encode())
+                threading.Event().wait(10)
+        except Exception as e:
+            print(f"[ERROR] An error occurred with the connection: {e}")
+        finally:
+            client_socket.close()
+            print(f"[CONNECTION] Client {client_address} disconnected.")
 
 if __name__ == "__main__":
-    # Inicializa e inicia o servidor
-    srv = Server()
-    srv.start_udp_server_with_ack()
-
-
-
-
-
-"""
-import socket
-
-class Server:
-    
-    def start_udp_server_with_ack(host='10.0.0.10', port=38):
-        udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_server_socket.bind((host, port))
-
-        print(f"Server listening at {host}:{port}")
-
-        while True:
-            data, addr = udp_server_socket.recvfrom(1024)
-            message = data.decode()
-            print(f"Mensagem recebida de {addr}: {message}")
-
-            # Extrai o número de sequência
-            if "Seq:" in message:
-                seq_num = message.split(":")[1].split(" - ")[0]
-                print(f"Número de sequência recebido: {seq_num}")
-
-                # Envia um ACK de volta
-                ack_message = f"ACK:{seq_num}"
-                udp_server_socket.sendto(ack_message.encode(), addr)
-
-if __name__ == "__main__":
-    srv = Server()
-    srv.start_udp_server_with_ack()
-"""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    task_file_path = os.path.join(current_dir, "..", "tasks.json")
+    HOST = "127.0.0.1"
+    PORT = 65432
+    server = Server(HOST, PORT, task_file_path)
+    server.start()
