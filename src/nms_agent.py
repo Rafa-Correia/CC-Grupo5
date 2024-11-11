@@ -4,7 +4,7 @@ import threading
 import time
 from NetTask import NetTask, SYN, ACK, DATA
 
-def register_with_server(server_host='127.0.0.1', server_port=65432):
+def register_with_server(server_host='10.0.0.11', server_port=65432):
     try:
         tcp_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         tcp_client_socket.connect((server_host, server_port))
@@ -36,7 +36,27 @@ def send_metrics_periodically(server_socket, interval=10):
         print(f"[NMS_AGENT] - [send_metrics_periodically]: SENT METRICS TO SERVER")
         time.sleep(interval)
 
+def get_ip_address():
+    while True:
+        ip_address = input("Please enter a valid IP address: ")
+        # Basic validation for IP address format
+        parts = ip_address.split(".")
+        if len(parts) == 4 and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
+            return ip_address
+        else:
+            print("Invalid IP address format. Please try again.")
+
+def get_port():
+    while True:
+        port = input("Please enter a port number (1-65535): ")
+        if port.isdigit() and 1 <= int(port) <= 65535:
+            return int(port)
+        else:
+            print("Invalid port number. Please enter a number between 1 and 65535.")           
+
 if __name__ == "__main__":
+    address = get_ip_address()
+    port = get_port()
     server_socket = register_with_server()
     if server_socket:
         threading.Thread(target=send_metrics_periodically, args=(server_socket,), daemon=True).start()
