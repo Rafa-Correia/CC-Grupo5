@@ -1,9 +1,10 @@
 import socket
 import json
 import threading
+import random
 import select
 import os
-from NetTask import NetTask, SYN, ACK, DATA
+from NetTask import *
 
 class TaskInterpreter:
     def __init__(self, file_path):
@@ -58,17 +59,17 @@ class Server:
         self.host = host
         self.port = port
         self.task_interpreter = TaskInterpreter(task_file_path)
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server_socket.settimeout(2)
         self.lock = threading.Lock()
         self.agent_registry = {}
-        self.inputs = [self.server_socket]
         self.agent_data = {}
+        
 
     def start(self):
         try:
             self.server_socket.bind((self.host, self.port))
-            self.server_socket.listen(5)
+            #self.server_socket.listen(5)
             print(f"[NMS_SERVER] - [start]: SERVER STARTED AND LISTENING ON {self.host}:{self.port}")
             self.task_interpreter.load_tasks()
         except OSError as e:
@@ -76,35 +77,32 @@ class Server:
             return
 
         while True:
-            readable, _, _ = select.select(self.inputs, [], [], 1)
-            for s in readable:
-                if s is self.server_socket:
-                    client_socket, client_address = self.server_socket.accept()
-                    print(f"[NMS_SERVER] - [start]: NEW CONNECTION FROM {client_address}")
-                    self.inputs.append(client_socket)
-                    self.register_agent(client_socket, client_address)
+            try:
+                packet_stream, address = self.server_socket.recvfrom(1024)
+                packet = NetTask.from_bytes(packet_stream)
+                if packet.flags & SYN:
+                    print(f"[NMS_SERVER] - [start]: NEW CONNECTION FROM {address}")
+                    agent_id = packet.payload.decode("utf-8")
+                    self.agent_registry[address] = (agent_id, random.randint(0, 100000), packet.seq_num)
+                    print(f"Registered at {address}:{self.agent_registry[address]}")
+                    flags = SYN
+                    flags |= ACK
+                    ack_packet = NetTask(seq_num=self.agent_registry[address][1], ack_num=self.agent_registry[address][2], flags=flags)
+                    ack_stream = ack_packet.to_bytes()
+                    print("Sending " + str(ack_stream))
+                    self.server_socket.sendto(ack_stream, address)
                 else:
-                    self.receive_data_from_agent(s)
+                    self.receive_data_from_agent(packet)
+            except Exception as e:
+                print("Something went wrong: " + str(e))
 
-    def register_agent(self, client_socket, client_address):
-        try:
-            registration_message = client_socket.recv(1024).decode('utf-8')
-            if registration_message == "REGISTER":
-                with self.lock:
-                    self.agent_registry[client_address] = client_socket
-                print(f"[NMS_SERVER] - [register_agent]: AGENT {client_address} REGISTERED SUCCESSFULLY")
-                task = self.task_interpreter.assign_task_to_agent(client_address)
-                client_socket.send(task.encode('utf-8'))
-                print(f"[NMS_SERVER] - [register_agent]: TASK SENT TO AGENT {client_address}")
-        except Exception as e:
-            print(f"[NMS_SERVER] - [register_agent]: ERROR WITH AGENT {client_address}: {e}")
 
     def receive_data_from_agent(self, agent_socket):
         try:
             data = agent_socket.recv(4096)
             if data:
                 packet = NetTask.from_bytes(data)
-                if packet.flags & DATA:
+                if packet.flags & REPORT:
                     print(f"[NMS_SERVER] - [receive_data_from_agent]: RECEIVED METRICS FROM AGENT: {packet.payload.decode('utf-8')}")
                     self.agent_data[agent_socket] = packet.payload.decode('utf-8')
             else:
@@ -118,7 +116,7 @@ class Server:
 
 if __name__ == "__main__":
     task_file_path = "tasks.json"
-    HOST = "10.0.0.11"
+    HOST = "10.0.0.10"
     PORT = 65432
 
     server = Server(HOST, PORT, task_file_path)

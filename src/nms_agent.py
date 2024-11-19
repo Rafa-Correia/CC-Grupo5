@@ -21,22 +21,31 @@ class Agent:
 
         self.s_address = server_address
         self.s_port = server_port
+        self.s_info = (server_address, server_port)
         self.tasks = {}
     
 
     def initialize_connection(self):
         payload = self.agent_id.encode("utf-8")
-        packet = NetTask(self.seq_number, self.ack_number, SYN, 0, payload)
+        packet = NetTask(seq_num=self.seq_number, ack_num=self.ack_number, flags=SYN,payload=payload)
         while True:
             try:
-                self.s_socket.sendall(packet.to_bytes())
-                response = self.s_socket.recv(121)
+                print("Sending SYN packet...")
+                self.s_socket.sendto(packet.to_bytes(), self.s_info)
+                response = self.s_socket.recv(1024)
                 response_packet = NetTask.from_bytes(response)
-                if response_packet.flags & (SYN & ACK):
+                flags = SYN
+                flags |= ACK
+                if response_packet.flags & flags:
+                    print("Got a SYN+ACK response!")
                     self.ack_number=response_packet.seq_num
-                    return True
-            except:
+                    break
+                
+            except Exception as e:
+                print("Something went wrong: " + str(e))
                 continue
+        
+        return True
 
 
     #SEND A PACKET AND WAIT FOR ACKNOWLEDGE, TRY AT MAX 10 TIMES
@@ -188,7 +197,6 @@ class Agent:
             metrics = Agent.collect_metrics(id, duration)
             if metrics == None:
                 continue #nothing happens if cant measure
-            
 
             if id == INTERFACE:
                 block = DataBlockClient(id, data=metrics)
@@ -205,16 +213,15 @@ class Agent:
     
 
     def run(self):
-        allgood = self.initialize_connection()
-        if not allgood:
-            return None
+        self.initialize_connection()
         while True:
             try:
-                packet_stream = self.s_socket.recv(121)
+                packet_stream = self.s_socket.recv(1024)
                 packet = NetTask.from_bytes(packet_stream)
                 self.process_packet(packet)
-            except:
-                return None
+            except Exception as e:
+                print("Exception: " + str(e))
+                continue
 
 def get_ip_address():
     while True:

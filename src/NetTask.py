@@ -20,22 +20,20 @@ class NetTask:
         self.task_id = task_id
         self.payload = payload
         self.checksum = self.calculate_checksum()
-        print(f"[NETTASK] - [__init__]: INITIALIZED WITH SEQ_NUM={self.seq_num}, ACK_NUM={self.ack_num}, FLAGS={self.flags}, PAYLOAD LENGTH={len(self.payload)}")
+        print(f"[NETTASK] - [__init__]: INITIALIZED WITH SEQ_NUM={self.seq_num}, ACK_NUM={self.ack_num}, FLAGS={self.flags}, PAYLOAD LENGTH={len(self.payload)}, PAYLOAD={self.payload}")
 
     def calculate_checksum(self):
         data = struct.pack('!IIB', self.seq_num, self.ack_num, self.flags) + self.payload
         checksum = hashlib.md5(data).hexdigest()
-        print(f"[NETTASK] - [calculate_checksum]: CHECKSUM CALCULATED AS {checksum}")
+        #print(f"[NETTASK] - [calculate_checksum]: CHECKSUM CALCULATED AS {checksum}")
         return checksum
 
     def to_bytes(self):
-        t_id = self.task_id.encode("utf-8")
-        t_id_len = len(t_id)
 
         payload_length = len(self.payload)
-        header = struct.pack('!IIB16sHi', self.seq_num, self.ack_num, self.flags, self.checksum.encode('utf-8'), payload_length, self.task_id)
-        print(f"[NETTASK] - [to_bytes]: CONVERTED TO BYTES WITH HEADER LENGTH={len(header)}, PAYLOAD LENGTH={payload_length}")
-        return header + t_id + self.payload
+        header = struct.pack('!IIB16siH', self.seq_num, self.ack_num, self.flags, self.checksum.encode('utf-8'), self.task_id, payload_length)
+        #print(f"[NETTASK] - [to_bytes]: CONVERTED TO BYTES WITH HEADER LENGTH={len(header)}, PAYLOAD LENGTH={payload_length}")
+        return header + self.payload
 
     @staticmethod
     def from_bytes(data):
@@ -43,21 +41,21 @@ class NetTask:
         payload = data[31:31 + payload_len]
         packet = NetTask(seq_num, ack_num, flags, task_id, payload)
         packet.checksum = checksum.decode('utf-8')
-        print(f"[NETTASK] - [from_bytes]: PACKET CREATED FROM BYTES WITH SEQ_NUM={seq_num}, ACK_NUM={ack_num}, FLAGS={flags}, PAYLOAD LENGTH={payload_len}")
+        #print(f"[NETTASK] - [from_bytes]: PACKET CREATED FROM BYTES WITH SEQ_NUM={seq_num}, ACK_NUM={ack_num}, FLAGS={flags}, PAYLOAD LENGTH={payload_len}")
         return packet
 
     def send_with_retransmission(self, socket, address, timeout=2):
         socket.sendto(self.to_bytes(), address)
-        print(f"[NETTASK] - [send_with_retransmission]: PACKET SENT TO {address}")
+        #print(f"[NETTASK] - [send_with_retransmission]: PACKET SENT TO {address}")
         socket.settimeout(timeout)
         try:
             response, _ = socket.recvfrom(4096)
             ack_packet = NetTask.from_bytes(response)
             if ack_packet.flags & ACK:
-                print(f"[NETTASK] - [send_with_retransmission]: ACK RECEIVED FOR SEQ_NUM={self.seq_num}")
+                #print(f"[NETTASK] - [send_with_retransmission]: ACK RECEIVED FOR SEQ_NUM={self.seq_num}")
                 return True
         except socket.timeout:
-            print(f"[NETTASK] - [send_with_retransmission]: TIMEOUT, RETRANSMITTING SEQ_NUM={self.seq_num}")
+            #print(f"[NETTASK] - [send_with_retransmission]: TIMEOUT, RETRANSMITTING SEQ_NUM={self.seq_num}")
             return False
 
     def update_sequence_and_ack(self):
@@ -70,14 +68,14 @@ class NetTask:
             success = self.send_with_retransmission(socket, address)
             if success:
                 return True
-            print(f"[NETTASK] - [handle_transmission]: RETRY {attempt + 1} FOR SEQ_NUM={self.seq_num}")
-        print(f"[NETTASK] - [handle_transmission]: FAILED AFTER {max_retries} RETRIES FOR SEQ_NUM={self.seq_num}")
+            #print(f"[NETTASK] - [handle_transmission]: RETRY {attempt + 1} FOR SEQ_NUM={self.seq_num}")
+        #print(f"[NETTASK] - [handle_transmission]: FAILED AFTER {max_retries} RETRIES FOR SEQ_NUM={self.seq_num}")
         return False
 
     def prepare_metrics_payload(self, metrics):
         self.payload = json.dumps(metrics).encode('utf-8')
         self.checksum = self.calculate_checksum()
-        print(f"[NETTASK] - [prepare_metrics_payload]: METRICS PAYLOAD PREPARED WITH CHECKSUM {self.checksum}")
+        #print(f"[NETTASK] - [prepare_metrics_payload]: METRICS PAYLOAD PREPARED WITH CHECKSUM {self.checksum}")
 
 if __name__ == "__main__":
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
