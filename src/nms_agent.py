@@ -225,7 +225,7 @@ class Agent:
 
 def get_ip_address():
     while True:
-        ip_address = input("What is the server address: ")
+        ip_address = input("What is the server's address: ")
         # Basic validation for IP address format
         parts = ip_address.split(".")
         if len(parts) == 4 and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
@@ -233,13 +233,6 @@ def get_ip_address():
         else:
             print("Invalid IP address format. Please try again.")
 
-def get_port():
-    while True:
-        port = input("What's the server port: ")
-        if port.isdigit() and 1 <= int(port) <= 65535:
-            return int(port)
-        else:
-            print("Invalid port number. Please enter a number between 1 and 65535.")
 
 def get_agent_id():
     id = input("Last but not least, what is this agent's id: ")
@@ -247,7 +240,7 @@ def get_agent_id():
 
 if __name__ == "__main__":
     address = get_ip_address()
-    port = get_port()
+    port = 65432
     id = get_agent_id()
 
     agent = Agent(id, address, port)

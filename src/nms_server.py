@@ -55,8 +55,7 @@ class TaskInterpreter:
         return json.dumps(task)
 
 class Server:
-    def __init__(self, host, port, task_file_path):
-        self.host = host
+    def __init__(self, port, task_file_path):
         self.port = port
         self.task_interpreter = TaskInterpreter(task_file_path)
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -68,9 +67,9 @@ class Server:
 
     def start(self):
         try:
-            self.server_socket.bind((self.host, self.port))
+            self.server_socket.bind(('0.0.0.0', self.port))
             #self.server_socket.listen(5)
-            print(f"[NMS_SERVER] - [start]: SERVER STARTED AND LISTENING ON {self.host}:{self.port}")
+            print(f"[NMS_SERVER] - [start]: SERVER STARTED ON PORT {self.port}")
             self.task_interpreter.load_tasks()
         except OSError as e:
             print(f"[NMS_SERVER] - [start]: FAILED TO START SERVER: {e}")
@@ -116,9 +115,8 @@ class Server:
 
 if __name__ == "__main__":
     task_file_path = "tasks.json"
-    HOST = "10.0.0.10"
     PORT = 65432
 
-    server = Server(HOST, PORT, task_file_path)
+    server = Server(PORT, task_file_path)
     print("[NMS_SERVER] - [main]: INITIALIZING SERVER...")
     server.start()
