@@ -96,7 +96,7 @@ class Agent:
 
             self.ack_number = self.ack_number + p_len
             response = NetTask(self.seq_number, self.ack_number, ACK)
-            print("Sending acknowledge!")
+            print("Sending acknowledge...")
             self.s_socket.sendto(response.to_bytes(), self.s_info)
             print("Done!")
             return True
