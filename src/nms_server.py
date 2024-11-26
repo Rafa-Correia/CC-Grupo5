@@ -19,6 +19,7 @@ class Server:
         self.server_socket.settimeout(2)
         self.lock = threading.Lock()
         self.agent_registry = {}
+        self.address_to_agent_id = {}
         self.agent_data = {}
         
 
@@ -43,6 +44,8 @@ class Server:
                     print(f"[NMS_SERVER] - [start]: NEW CONNECTION FROM {address}")
                     agent_id = packet.payload.decode("utf-8")
                     self.agent_registry[agent_id] = (address, random.randint(0, 100000), packet.seq_num)
+                    self.address_to_agent_id[address] = agent_id
+                    self.agent_data[agent_id] = []
                     print(f"Registered at {agent_id}:{self.agent_registry[agent_id]}")
                     flags = SYN
                     flags |= ACK
@@ -51,27 +54,17 @@ class Server:
                     print("Sending " + str(ack_stream))
                     self.server_socket.sendto(ack_stream, address)
                 else:
-                    self.receive_data_from_agent(packet)
+                    self.receive_data_from_agent(packet, address)
             except Exception as e:
                 print("Something went wrong: " + str(e))
 
 
-    def receive_data_from_agent(self, agent_socket):
-        try:
-            data = agent_socket.recv(4096)
-            if data:
-                packet = NetTask.from_bytes(data)
-                if packet.flags & REPORT:
-                    print(f"[NMS_SERVER] - [receive_data_from_agent]: RECEIVED METRICS FROM AGENT: {packet.payload.decode('utf-8')}")
-                    self.agent_data[agent_socket] = packet.payload.decode('utf-8')
-            else:
-                print("[NMS_SERVER] - [receive_data_from_agent]: AGENT DISCONNECTED")
-                self.inputs.remove(agent_socket)
-                agent_socket.close()
-        except Exception as e:
-            print(f"[NMS_SERVER] - [receive_data_from_agent]: ERROR RECEIVING DATA: {e}")
-            self.inputs.remove(agent_socket)
-            agent_socket.close()
+    def receive_data_from_agent(self, packet, address):
+        print("inside receive data")
+        if packet.flags & REPORT:
+            print("is report")
+            agent_id = self.address_to_agent_id[address]
+            self.agent_data[agent_id].append(packet)
 
     def send_packet(self, packet_stream, address, max_retries = 10):
         retries = 0
@@ -80,19 +73,21 @@ class Server:
                 self.server_socket.sendto(packet_stream, address)
                 while True:
                     print("waiting for response...")
-                    response = self.server_socket.recv(1024)
+                    response, address_r = self.server_socket.recvfrom(1024)
 
                     packet = NetTask.from_bytes(response)
-                    if packet.flags & ACK:
+                    
+                    if address_r != address:
+                        self.receive_data_from_agent(packet, address_r)
+                    
+                    elif packet.flags & ACK:
                         print("Got ack")
                         #increase sequence and acknowledge numbers?
                         return True
                     
-                    if packet.flags & ERR:
+                    elif packet.flags & ERR:
                         retries += 1
                         break
-
-                    self.process_packet(packet)
 
             except socket.timeout:
                 retries += 1

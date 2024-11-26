@@ -88,8 +88,9 @@ class Agent:
             self.seq_number = packet.ack_num
 
             task_id = packet.task_id
-            self.tasks.append(task_id)
             if task_id not in self.tasks:
+                self.tasks.append(task_id)
+                print("Now measuring metrics...")
                 blocks = DataBlockServer.separate_packed_data(packet.payload)
                 for block in blocks:
                     threading.Thread(target=Agent.collect_send_metrics, args=(self, task_id, block), daemon=True).start()
@@ -200,6 +201,7 @@ class Agent:
 
     #GET METRICS AND SEND THEM TO SERVER
     def collect_send_metrics(agent, task_id, data_block):
+        print("inside c_s_metrics")
         id = data_block.id
         frequency = data_block.frequency
         duration = data_block.duration
@@ -212,7 +214,12 @@ class Agent:
             if id == INTERFACE:
                 block = DataBlockClient(id, data=metrics)
             else:
-                block = DataBlockClient(id, metrics)
+                if metrics > data_block.max_value:
+                    #alert
+                    print("ALERT")
+                    block = DataBlockClient(id, metrics)
+                else:
+                    block = DataBlockClient(id, metrics)
 
             block_stream = block.to_bytes()
             packet = NetTask(agent.seq_number, agent.ack_number, REPORT, task_id, block_stream)

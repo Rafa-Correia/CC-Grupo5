@@ -116,6 +116,18 @@
                             "destination_ip": "0.0.0.0"
                         }
                     }
+                },
+
+                {
+                    "device_id": "a3",
+                    "device_metrics": {
+                        "cpu": {
+                            "active": true,
+                            "frequency":10,
+                            "duration":5,
+                            "alert_con": 90
+                        }
+                    }
                 }
             ]
         }
