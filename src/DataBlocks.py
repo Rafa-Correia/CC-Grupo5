@@ -24,68 +24,96 @@ class DataBlockServer:
         self.source_ip = source_ip
         self.destination_ip = destination_ip
 
+        #print("Created block: ")
+        #print(f"Block has id = {self.id}, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
+
     def to_bytes(self):
+        #print("Trying to pack block...")
         s_ip = socket.inet_aton(self.source_ip)
         d_ip = socket.inet_aton(self.destination_ip)
         c_mode = 0
         if self.client_mode:
             c_mode = 1
 
-        if id == CPU:
+        if self.id == CPU:
+            #print(f"Block has id = CPU, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!BiBi', self.id & 0xFF, self.frequency, self.max_value & 0xFF, self.duration)
         
-        elif id == RAM:
+        elif self.id == RAM:
+            #print(f"Block has id = RAM, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!BiB', self.id & 0xFF, self.frequency, self.max_value & 0xFF)
         
-        elif id == INTERFACE:
+        elif self.id == INTERFACE:
+            #print(f"Block has id = INTERFACE, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!Bii', self.id & 0xFF, self.frequency, self.max_value)
         
-        elif id == BANDWIDTH:
+        elif self.id == BANDWIDTH:
+            #print(f"Block has id = BANDWIDTH, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!BiiB4s4s', self.id & 0xFF, self.frequency, self.duration, c_mode & 0xFF, s_ip, d_ip)
         
-        elif id == JITTER:
+        elif self.id == JITTER:
+            #print(f"Block has id = JITTER, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!BiiiB4s4s', self.id & 0xFF, self.frequency, self.max_value, self.duration, c_mode & 0xFF, s_ip, d_ip)
         
-        elif id == LOSS:
+        elif self.id == LOSS:
+            #print(f"Block has id = LOSS, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!BiBiB4s4s', self.id & 0xFF, self.frequency, self.max_value & 0xFF, self.duration, c_mode & 0xFF, s_ip, d_ip)
         
-        elif id == LATENCY:
+        elif self.id == LATENCY:
+            #print(f"Block has id = LATENCY, freq = {self.frequency}, max = {self.max_value}, duration = {self.duration}, client = {self.client_mode}, s_ip = {self.source_ip}, d_ip = {self.destination_ip}")
             return struct.pack('!Bii4s4s', self.id & 0xFF, self.frequency, self.duration, s_ip, d_ip)
         
+        print("How did we get here?")
         return None
         
     def from_bytes(id, packed_data):
         if id == CPU:
             freq, max_value, duration = struct.unpack('!iBi', packed_data)
-            return DataBlockServer(id, freq, max_value, duration)
+            return DataBlockServer(id=id, frequency=freq, max_value=max_value, duration=duration)
         
         elif id == RAM:
             freq, max_value = struct.unpack('!iB', packed_data)
-            return DataBlockServer(id, freq, max_value)
+            return DataBlockServer(id=id, frequency=freq, max_value=max_value)
         
         elif id == INTERFACE:
             freq, max_value = struct.unpack('!ii', packed_data)
-            return DataBlockServer(id, freq, 0, max_value)
+            return DataBlockServer(id=id, frequency=freq, max_value=max_value)
         
         elif id == BANDWIDTH:
-            freq, max_perc, max_int, duration, measure_flags, s_ip, d_ip = struct.unpack('!iBiiB4s4s', packed_data)
+            freq, duration, c_mode, s_ip, d_ip = struct.unpack('!iiB4s4s', packed_data)
+            client_mode = c_mode == 1
             source_ip = socket.inet_ntoa(s_ip)
             destination_ip = socket.inet_ntoa(d_ip)
-            return DataBlockServer(id, freq, max_perc, max_int, duration, measure_flags, source_ip, destination_ip)
+            return DataBlockServer(id=id, frequency=freq, duration=duration, client_mode=client_mode, source_ip=source_ip, destination_ip=destination_ip)
+        
+        elif id == JITTER:
+            freq, max_value, duration, c_mode, s_ip, d_ip = struct.unpack('!iiiB4s4s', packed_data)
+            client_mode = c_mode == 1
+            source_ip = socket.inet_ntoa(s_ip)
+            destination_ip = socket.inet_ntoa(d_ip)
+            return DataBlockServer(id=id, frequency=freq, max_value=max_value, duration=duration, client_mode=client_mode, source_ip=source_ip, destination_ip=destination_ip)
+        
+        elif id == LOSS:
+            freq, max_value, duration, c_mode, s_ip, d_ip = struct.unpack('!iBiB4s4s', packed_data)
+            client_mode = c_mode == 1
+            source_ip = socket.inet_ntoa(s_ip)
+            destination_ip = socket.inet_ntoa(d_ip)
+            return DataBlockServer(id=id, frequency=freq, max_value=max_value, duration=duration, client_mode=client_mode, source_ip=source_ip, destination_ip=destination_ip)
 
         elif id == LATENCY:
             freq, duration, s_ip, d_ip = struct.unpack('!ii4s4s', packed_data)
             source_ip = socket.inet_ntoa(s_ip)
             destination_ip = socket.inet_ntoa(d_ip)
-            return DataBlockServer(id, freq, 0, 0, duration, 0, source_ip, destination_ip)
+            return DataBlockServer(id=id, frequency=freq, duration=duration, source_ip=source_ip, destination_ip=destination_ip)
 
 
         return None
     
     def separate_packed_data(packed_blocks):
+        #print("Separating packed data blocks(server)...")
         # Define the mapping from ID to data length
         id_to_length = {
-            CPU: 5,
+            CPU: 9,
             RAM: 5,
             INTERFACE: 8,
             BANDWIDTH: 17,

@@ -20,7 +20,7 @@ class NetTask:
         self.task_id = task_id
         self.payload = payload
         self.checksum = self.calculate_checksum()
-        print(f"[NETTASK] - [__init__]: INITIALIZED WITH SEQ_NUM={self.seq_num}, ACK_NUM={self.ack_num}, FLAGS={self.flags}, PAYLOAD LENGTH={len(self.payload)}, PAYLOAD={self.payload}")
+        #print(f"[NETTASK] - [__init__]: INITIALIZED WITH SEQ_NUM={self.seq_num}, ACK_NUM={self.ack_num}, FLAGS={self.flags}, PAYLOAD LENGTH={len(self.payload)}, PAYLOAD={self.payload}")
 
     def calculate_checksum(self):
         data = struct.pack('!IIB', self.seq_num, self.ack_num, self.flags) + self.payload

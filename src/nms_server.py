@@ -5,54 +5,11 @@ import random
 import select
 import os
 from NetTask import *
+from DataBlocks import *
+from Task import *
 
-class TaskInterpreter:
-    def __init__(self, file_path):
-        self.file_path = file_path
-        self.devices = []
+#import pdb; pdb.set_trace()
 
-    def load_tasks(self):
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                tasks = data.get('tasks', [])
-                print("[NMS_SERVER] - [load_tasks]: PARSING TASKS...\n")
-                for task in tasks:
-                    task_id = task.get("task_id", "UNKNOWN")
-                    devices = task.get("devices", [])
-                    print(f"[NMS_SERVER] - [load_tasks]: TASK ID: {task_id}")
-                    for device in devices:
-                        device_id = device.get("device_id", "UNKNOWN")
-                        device_metrics = device.get("device_metrics", {})
-                        alertflow_conditions = device.get("alertflow_conditions", {})
-
-                        print(f"  [NMS_SERVER] - DEVICE ID: {device_id}")
-                        print("    METRICS:")
-                        for metric, status in device_metrics.items():
-                            status_text = "ENABLED" if status else "DISABLED"
-                            print(f"      - {metric.upper()}: {status_text}")
-
-                        print("    ALERT CONDITIONS:")
-                        for condition, value in alertflow_conditions.items():
-                            print(f"      - {condition.upper()}: {value}")
-                        print("\n")
-
-                    self.devices.extend(devices)
-                print("[NMS_SERVER] - [load_tasks]: TASKS LOADED SUCCESSFULLY.")
-        except FileNotFoundError:
-            print(f"[NMS_SERVER] - [load_tasks]: FILE NOT FOUND: {self.file_path}")
-        except json.JSONDecodeError:
-            print("[NMS_SERVER] - [load_tasks]: FAILED TO DECODE THE JSON FILE. CHECK THE FORMAT.")
-
-    def assign_task_to_agent(self, agent_address):
-        if not self.devices:
-            print(f"[NMS_SERVER] - [assign_task_to_agent]: NO TASKS AVAILABLE TO ASSIGN TO {agent_address}")
-            return "NO TASKS AVAILABLE"
-
-        task = self.devices.pop(0)
-        task_info = f"TASK ASSIGNED: {task.get('device_id')}"
-        print(f"[NMS_SERVER] - [assign_task_to_agent]: {task_info} TO AGENT {agent_address}")
-        return json.dumps(task)
 
 class Server:
     def __init__(self, port, task_file_path):
@@ -77,16 +34,19 @@ class Server:
 
         while True:
             try:
+                
+                self.assign_tasks()
+
                 packet_stream, address = self.server_socket.recvfrom(1024)
                 packet = NetTask.from_bytes(packet_stream)
                 if packet.flags & SYN:
                     print(f"[NMS_SERVER] - [start]: NEW CONNECTION FROM {address}")
                     agent_id = packet.payload.decode("utf-8")
-                    self.agent_registry[address] = (agent_id, random.randint(0, 100000), packet.seq_num)
-                    print(f"Registered at {address}:{self.agent_registry[address]}")
+                    self.agent_registry[agent_id] = (address, random.randint(0, 100000), packet.seq_num)
+                    print(f"Registered at {agent_id}:{self.agent_registry[agent_id]}")
                     flags = SYN
                     flags |= ACK
-                    ack_packet = NetTask(seq_num=self.agent_registry[address][1], ack_num=self.agent_registry[address][2], flags=flags)
+                    ack_packet = NetTask(seq_num=self.agent_registry[agent_id][1], ack_num=self.agent_registry[agent_id][2], flags=flags)
                     ack_stream = ack_packet.to_bytes()
                     print("Sending " + str(ack_stream))
                     self.server_socket.sendto(ack_stream, address)
@@ -113,8 +73,51 @@ class Server:
             self.inputs.remove(agent_socket)
             agent_socket.close()
 
+    def send_packet(self, packet_stream, address, max_retries = 10):
+        retries = 0
+        while retries < max_retries:
+            try:
+                self.server_socket.sendto(packet_stream, address)
+                while True:
+                    print("waiting for response...")
+                    response = self.server_socket.recv(1024)
+
+                    packet = NetTask.from_bytes(response)
+                    if packet.flags & ACK:
+                        print("Got ack")
+                        #increase sequence and acknowledge numbers?
+                        return True
+                    
+                    if packet.flags & ERR:
+                        retries += 1
+                        break
+
+                    self.process_packet(packet)
+
+            except socket.timeout:
+                retries += 1
+
+            except socket.error:
+                retries += 1
+
+    
+    def assign_tasks(self):
+        agents = self.agent_registry.keys()
+        for a in agents:
+            tasks = self.task_interpreter.devices_with_tasks.get(a, None)
+            if tasks == None:
+                continue
+            else:
+                address, seq, ack = self.agent_registry[a]
+                while tasks:
+                    t = tasks.pop()
+                    payload = t.to_bytes()
+                    packet = NetTask(seq, ack, TASK, t.task_id, payload)
+                    self.send_packet(packet.to_bytes(), address)
+
+
 if __name__ == "__main__":
-    task_file_path = "tasks.json"
+    task_file_path = "tasks2.json"
     PORT = 65432
 
     server = Server(PORT, task_file_path)

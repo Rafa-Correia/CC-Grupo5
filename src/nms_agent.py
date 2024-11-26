@@ -22,7 +22,7 @@ class Agent:
         self.s_address = server_address
         self.s_port = server_port
         self.s_info = (server_address, server_port)
-        self.tasks = {}
+        self.tasks = []
     
 
     def initialize_connection(self):
@@ -53,9 +53,11 @@ class Agent:
         retries = 0
         while retries < max_retries:
             try:
-                self.s_socket.sendall(packet_stream)
+                self.s_socket.sendto(packet_stream, self.s_info)
                 while True:
-                    response = self.s_socket.recv(121)
+                    response = self.s_socket.recv(1024)
+                    p_len = len(response)
+
 
                     packet = NetTask.from_bytes(response)
                     if packet.flags & ACK:
@@ -66,7 +68,7 @@ class Agent:
                         retries += 1
                         break
 
-                    self.process_packet(packet)
+                    self.process_packet(packet, p_len)
 
             except socket.timeout:
                 retries += 1
@@ -75,19 +77,28 @@ class Agent:
                 retries += 1
 
     #PROCESS A PACKET
-    def process_packet(self, packet):
+    def process_packet(self, packet, p_len):
         if packet.flags & ACK:
             #drop packet / do nothing
             #dropped because ack is after timeout (all acknowledges are supposed to be received at most 2 seconds after packet is sent)
             return True
         
         elif packet.flags & TASK:
+            print("Processing TASK!")
             self.seq_number = packet.ack_num
 
             task_id = packet.task_id
-            blocks = DataBlockServer.separate_packed_data(packet.payload)
-            for block in blocks:
-                threading.Thread(target=Agent.collect_send_metrics, args=(self, task_id, block,), daemon=True).start()
+            self.tasks.append(task_id)
+            if task_id not in self.tasks:
+                blocks = DataBlockServer.separate_packed_data(packet.payload)
+                for block in blocks:
+                    threading.Thread(target=Agent.collect_send_metrics, args=(self, task_id, block), daemon=True).start()
+
+            self.ack_number = self.ack_number + p_len
+            response = NetTask(self.seq_number, self.ack_number, ACK)
+            print("Sending acknowledge!")
+            self.s_socket.sendto(response.to_bytes(), self.s_info)
+            print("Done!")
             return True
         
         elif packet.flags & FIN:
@@ -98,7 +109,7 @@ class Agent:
             return True
 
     #COLLECT METRICS
-    def collect_metrics(id, duration, client_mode, source_ip, destination_ip):
+    def collect_metrics(id, duration, client_mode=True, source_ip ="0.0.0.0", destination_ip="0.0.0.0"):
         if id == CPU:
             cpu_usage_float = psutil.cpu_percent(duration)
             cpu_usage = int(cpu_usage_float) #round down percentage
@@ -217,8 +228,10 @@ class Agent:
         while True:
             try:
                 packet_stream = self.s_socket.recv(1024)
+                p_len = len(packet_stream)
                 packet = NetTask.from_bytes(packet_stream)
-                self.process_packet(packet)
+                self.process_packet(packet, p_len)
+                packet = None
             except Exception as e:
                 print("Exception: " + str(e))
                 continue
