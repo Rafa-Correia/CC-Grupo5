@@ -154,15 +154,23 @@ class DataBlockClient:
         self.data = data
         self.data_len = len(data)
 
+        print(f"Created block with id: {self.id}, m_value: {self.m_value} and data: {self.data}")
+
+        if self.id == CPU:
+            print("IS CPU!")
+
     def to_bytes(self):
-        if id == CPU or id == RAM or id == LOSS:
+        if self.id == CPU or self.id == RAM or self.id == LOSS:
+            print("Packing BB")
             return struct.pack('!BB', self.id & 0xFF, self.m_value & 0xFF)
 
-        elif id == INTERFACE:
+        elif self.id == INTERFACE:
+            print("Packing BH")
             packed_len = struct.pack('!BH', self.id & 0xFF, self.data_len & 0xFFFF)
             return packed_len + self.data
         
         else:
+            print("Packing Bi")
             return struct.pack('!Bi', self.id & 0xFF, self.m_value)
 
     def from_bytes(packed_data = b''):
@@ -182,40 +190,44 @@ class DataBlockClient:
 
     def separate_packed_data(packed_blocks):
         # Define the mapping from ID to data length
-        id_to_length = {
-            CPU: 1,
-            RAM: 1,
-            #INTERFACE: ?
-            BANDWIDTH: 4,
-            JITTER: 4,
-            LOSS: 1,
-            LATENCY: 4
-        }
 
         # Initialize an index to read through the packed byte stream
         index = 0
         data_blocks = []
+        data = b''
+        m_value = 0
+
+        print(f"Separating {packed_blocks}")
 
         # Unpack each block and use from_bytes to create DataBlock objects with ID
         while index < len(packed_blocks):
             # Read the ID (1 byte)
             block_id = struct.unpack_from("!B", packed_blocks, index)[0]
+
+            #print(f"ID is {block_id}!")
             index += 1  # Move index past the ID field
 
             if(block_id == INTERFACE):
                 str_len = struct.unpack('!H', packed_blocks[index:index+2])[0]
                 data_length = 2 + str_len
-
+                data = packed_blocks[index:index + data_length]
             # Get the data length for this ID
+            elif block_id == CPU or block_id == RAM or block_id == LOSS:
+                m_value = struct.unpack('!B', packed_blocks[index:index+1])[0]
+                data_length = 1
+
             else:
-                data_length = id_to_length[block_id]
+                m_value = struct.unpack('!i', packed_blocks[index:index+4])[0]
+                data_length = 4
+            
+
 
             # Extract the data bytes for this block
-            data = packed_blocks[index:index + data_length]
+
             index += data_length  # Move index past the data
 
             # Create a DataBlock object with the ID and data, and store it
-            data_block = DataBlockServer.from_bytes(block_id, data)
+            data_block = DataBlockClient(block_id, m_value, data)
             data_blocks.append(data_block)
         return data_blocks
         
