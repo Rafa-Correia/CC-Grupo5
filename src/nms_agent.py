@@ -6,6 +6,7 @@ import time
 import random
 import psutil
 import re
+import queue
 from NetTask import *
 from DataBlocks import *
 
@@ -13,16 +14,25 @@ from DataBlocks import *
 class Agent:
     def __init__ (self, agent_id = "", server_address = "0.0.0.0", server_port = 0):
         self.agent_id = agent_id
-        self.s_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        self.s_socket_NetTask = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.s_socket_NetTask.bind(('0.0.0.0', 65432))
+        self.s_socket_AlertFlow = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s_socket_AlertFlow.bind(('0.0.0.0', 23456))
+
         self.seq_number = random.randint(0, 1000000) #any works, just for safety
         self.ack_number = 0
 
-        self.s_socket.settimeout(2.0)
+        self.s_socket_NetTask.settimeout(2.0)
 
         self.s_address = server_address
         self.s_port = server_port
         self.s_info = (server_address, server_port)
         self.tasks = []
+
+        self.m_queue = queue.Queue()
+
+        self.lock = threading.Lock()
     
 
     def initialize_connection(self):
@@ -31,8 +41,8 @@ class Agent:
         while True:
             try:
                 print("Sending SYN packet...")
-                self.s_socket.sendto(packet.to_bytes(), self.s_info)
-                response = self.s_socket.recv(1024)
+                self.s_socket_NetTask.sendto(packet.to_bytes(), self.s_info)
+                response = self.s_socket_NetTask.recv(1024)
                 response_packet = NetTask.from_bytes(response)
                 flags = SYN
                 flags |= ACK
@@ -42,7 +52,7 @@ class Agent:
                     break
                 
             except Exception as e:
-                print("Something went wrong: " + str(e))
+                #print("Something went wrong: " + str(e))
                 continue
         
         return True
@@ -53,15 +63,16 @@ class Agent:
         retries = 0
         while retries < max_retries:
             try:
-                self.s_socket.sendto(packet_stream, self.s_info)
-                while True:
-                    response = self.s_socket.recv(1024)
-                    p_len = len(response)
+                self.s_socket_NetTask.sendto(packet_stream, self.s_info)
 
+                while True:
+                    response = self.s_socket_NetTask.recv(1024)
+                    p_len = len(response)
 
                     packet = NetTask.from_bytes(response)
                     if packet.flags & ACK:
-                        #increase sequence and acknowledge numbers?
+                        self.seq_number = packet.ack_num
+                        self.ack_number = packet.seq_num
                         return True
                     
                     if packet.flags & ERR:
@@ -84,22 +95,24 @@ class Agent:
             return True
         
         elif packet.flags & TASK:
-            print("Processing TASK!")
+            #print("Processing TASK!")
             self.seq_number = packet.ack_num
 
             task_id = packet.task_id
             if task_id not in self.tasks:
                 self.tasks.append(task_id)
-                print("Now measuring metrics...")
+                #print("Now measuring metrics...")
                 blocks = DataBlockServer.separate_packed_data(packet.payload)
                 for block in blocks:
-                    threading.Thread(target=Agent.collect_send_metrics, args=(self, task_id, block), daemon=True).start()
+                    t = threading.Thread(target=Agent.collect_send_metrics, args=(self, task_id, block), daemon=True)
+                    t.start()
+                    
 
             self.ack_number = self.ack_number + p_len
             response = NetTask(self.seq_number, self.ack_number, ACK)
-            print("Sending acknowledge...")
-            self.s_socket.sendto(response.to_bytes(), self.s_info)
-            print("Done!")
+            #print("Sending acknowledge...")
+            self.s_socket_NetTask.sendto(response.to_bytes(), self.s_info)
+            #print("Done!")
             return True
         
         elif packet.flags & FIN:
@@ -201,8 +214,9 @@ class Agent:
 
     #GET METRICS AND SEND THEM TO SERVER
     def collect_send_metrics(agent, task_id, data_block):
-        print("inside c_s_metrics")
+        #print("Collecting...")
         id = data_block.id
+        #print(f"id is {id}")
         frequency = data_block.frequency
         duration = data_block.duration
         sleep_time = frequency - duration #duration of measurement is allways expected to be smaller than frequency of measurement
@@ -224,7 +238,8 @@ class Agent:
             block_stream = block.to_bytes()
             packet = NetTask(agent.seq_number, agent.ack_number, REPORT, task_id, block_stream)
 
-            agent.send_packet(packet.to_bytes())
+            with agent.lock:
+                agent.m_queue.put(packet)
 
             time.sleep(sleep_time)
 
@@ -234,13 +249,17 @@ class Agent:
         self.initialize_connection()
         while True:
             try:
-                packet_stream = self.s_socket.recv(1024)
+                while not self.m_queue.empty():
+                    p = self.m_queue.get()
+                    print(str(p.flags))
+                    self.send_packet(p.to_bytes())
+                packet_stream = self.s_socket_NetTask.recv(1024)
                 p_len = len(packet_stream)
                 packet = NetTask.from_bytes(packet_stream)
                 self.process_packet(packet, p_len)
                 packet = None
             except Exception as e:
-                print("Exception: " + str(e))
+                #print("Exception: " + str(e))
                 continue
 
 def get_ip_address():

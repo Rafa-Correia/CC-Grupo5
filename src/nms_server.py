@@ -37,6 +37,7 @@ class Server:
             try:
                 
                 self.assign_tasks()
+                self.print_all_data()
 
                 packet_stream, address = self.server_socket.recvfrom(1024)
                 packet = NetTask.from_bytes(packet_stream)
@@ -45,7 +46,7 @@ class Server:
                     agent_id = packet.payload.decode("utf-8")
                     self.agent_registry[agent_id] = (address, random.randint(0, 100000), packet.seq_num)
                     self.address_to_agent_id[address] = agent_id
-                    self.agent_data[agent_id] = []
+                    self.agent_data[agent_id] = b''
                     print(f"Registered at {agent_id}:{self.agent_registry[agent_id]}")
                     flags = SYN
                     flags |= ACK
@@ -56,15 +57,33 @@ class Server:
                 else:
                     self.receive_data_from_agent(packet, address)
             except Exception as e:
-                print("Something went wrong: " + str(e))
+                print("Exception: " + str(e))
+                continue
 
 
     def receive_data_from_agent(self, packet, address):
-        print("inside receive data")
-        if packet.flags & REPORT:
-            print("is report")
-            agent_id = self.address_to_agent_id[address]
-            self.agent_data[agent_id].append(packet)
+        try:
+            print("Got data from agent...")
+            if packet.flags & REPORT:
+                print("It's a report!")
+                agent_id = self.address_to_agent_id[address]
+                if packet.seq_num < self.agent_registry[agent_id][2]:
+                    print("Seq is smaller.")
+                    self.agent_data[agent_id] = self.agent_data[agent_id][:packet.seq_num]
+
+                new_registry = (address, self.agent_registry[agent_id][1], self.agent_registry[agent_id][2]+len(packet.payload))
+                self.agent_registry[agent_id] = new_registry
+
+                acknowledge_packet = NetTask(self.agent_registry[agent_id][1], self.agent_registry[agent_id][2], ACK, packet.task_id)
+                ack_stream = acknowledge_packet.to_bytes()
+                print(f"Sending ack to {address}...")
+                self.server_socket.sendto(ack_stream, address)
+                print("Done!")
+
+                print(f"Added {packet.payload} to agent {agent_id}'s data.")
+                self.agent_data[agent_id] += packet.payload
+        except Exception as e:
+            print(f"Oh... {e}")
 
     def send_packet(self, packet_stream, address, max_retries = 10):
         retries = 0
@@ -97,18 +116,34 @@ class Server:
 
     
     def assign_tasks(self):
+        
         agents = self.agent_registry.keys()
         for a in agents:
             tasks = self.task_interpreter.devices_with_tasks.get(a, None)
             if tasks == None:
                 continue
             else:
+                #print(f"Sending task to {a}!")
                 address, seq, ack = self.agent_registry[a]
                 while tasks:
                     t = tasks.pop()
                     payload = t.to_bytes()
                     packet = NetTask(seq, ack, TASK, t.task_id, payload)
                     self.send_packet(packet.to_bytes(), address)
+
+    def print_all_data(self):
+        print("Printing all data:\n")
+        key_set = self.agent_data.keys()
+        for k in key_set:
+            print(f"From agent {k}:")
+            p = self.agent_data.get(k, b'')
+            print(f"\tRaw data is {p}!")
+            blocks = DataBlockClient.separate_packed_data(p)
+            if blocks:
+                for b in blocks:
+                    print(f"\tid: {b.id}\n\tm_value: {b.m_value}\n\tdata: {b.data}")
+            else:
+                print("\tNone.")
 
 
 if __name__ == "__main__":
