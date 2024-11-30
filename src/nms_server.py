@@ -10,7 +10,6 @@ from Task import *
 
 #import pdb; pdb.set_trace()
 
-
 class Server:
     def __init__(self, port, task_file_path):
         self.port = port
@@ -22,7 +21,6 @@ class Server:
         self.address_to_agent_id = {}
         self.agent_data = {}
         
-
     def start(self):
         try:
             self.server_socket.bind(('0.0.0.0', self.port))
@@ -36,8 +34,8 @@ class Server:
         while True:
             try:
                 
-                self.assign_tasks()
-                self.print_all_data()
+                #self.assign_tasks()
+                #self.print_all_data() 
 
                 packet_stream, address = self.server_socket.recvfrom(1024)
                 packet = NetTask.from_bytes(packet_stream)
@@ -57,9 +55,8 @@ class Server:
                 else:
                     self.receive_data_from_agent(packet, address)
             except Exception as e:
-                print("Exception: " + str(e))
+                #print("Exception: " + str(e)) Parar de mandar time outs
                 continue
-
 
     def receive_data_from_agent(self, packet, address):
         try:
@@ -91,7 +88,7 @@ class Server:
             try:
                 self.server_socket.sendto(packet_stream, address)
                 while True:
-                    print("waiting for response...")
+                    #print("waiting for response...")
                     response, address_r = self.server_socket.recvfrom(1024)
 
                     packet = NetTask.from_bytes(response)
@@ -100,7 +97,7 @@ class Server:
                         self.receive_data_from_agent(packet, address_r)
                     
                     elif packet.flags & ACK:
-                        print("Got ack")
+                        #print("Got ack")
                         #increase sequence and acknowledge numbers?
                         return True
                     
@@ -114,7 +111,6 @@ class Server:
             except socket.error:
                 retries += 1
 
-    
     def assign_tasks(self):
         
         agents = self.agent_registry.keys()
@@ -133,6 +129,7 @@ class Server:
 
     def print_all_data(self):
         print("Printing all data:\n")
+        count = 1
         key_set = self.agent_data.keys()
         for k in key_set:
             print(f"From agent {k}:")
@@ -141,10 +138,12 @@ class Server:
             blocks = DataBlockClient.separate_packed_data(p)
             if blocks:
                 for b in blocks:
+                    print(f"----------{count}----------")
+                    count = count + 1
                     print(f"\tid: {b.id}\n\tm_value: {b.m_value}\n\tdata: {b.data}")
+                    print(f"---------------------------")
             else:
                 print("\tNone.")
-
 
 if __name__ == "__main__":
     task_file_path = "tasks2.json"

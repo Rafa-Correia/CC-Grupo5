@@ -34,7 +34,6 @@ class Agent:
 
         self.lock = threading.Lock()
     
-
     def initialize_connection(self):
         payload = self.agent_id.encode("utf-8")
         packet = NetTask(seq_num=self.seq_number, ack_num=self.ack_number, flags=SYN,payload=payload)
@@ -56,7 +55,6 @@ class Agent:
                 continue
         
         return True
-
 
     #SEND A PACKET AND WAIT FOR ACKNOWLEDGE, TRY AT MAX 10 TIMES
     def send_packet(self, packet_stream, max_retries = 10):
@@ -149,8 +147,6 @@ class Agent:
         elif id == LOSS:
             return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip)
             
-    
-
     #GET RESULT FROM IPERF, BE IT BANDWIDTH JITTER OR LOSS (specified by ID)
     def get_from_iperf(id:int, duration, client_mode, source_ip, destination_ip, udp = True):
         command = ["iperf"]
@@ -211,7 +207,6 @@ class Agent:
         else: 
             return None
 
-
     #GET METRICS AND SEND THEM TO SERVER
     def collect_send_metrics(agent, task_id, data_block):
         #print("Collecting...")
@@ -243,8 +238,6 @@ class Agent:
 
             time.sleep(sleep_time)
 
-    
-
     def run(self):
         self.initialize_connection()
         while True:
@@ -271,7 +264,6 @@ def get_ip_address():
             return ip_address
         else:
             print("Invalid IP address format. Please try again.")
-
 
 def get_agent_id():
     id = input("Last but not least, what is this agent's id: ")
