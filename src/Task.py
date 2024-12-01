@@ -116,7 +116,6 @@ class PerDeviceTask: #note, while a task may have many devices, this class conta
         
         return block_stream
 
-
 class TaskInterpreter:
     def __init__(self, file_path):
         self.file_path = file_path

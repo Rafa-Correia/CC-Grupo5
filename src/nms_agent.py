@@ -33,6 +33,7 @@ class Agent:
         self.m_queue = queue.Queue()
 
         self.lock = threading.Lock()
+    
         
         self.iperf_port_counter = 5001
         self.open_server_id = 0
@@ -63,7 +64,6 @@ class Agent:
                 continue
         
         return True
-
 
     #SEND A PACKET AND WAIT FOR ACKNOWLEDGE, TRY AT MAX 10 TIMES
     def send_packet(self, packet_stream, max_retries = 100, address = None):
@@ -272,7 +272,6 @@ class Agent:
         else: 
             return None
 
-
     #GET METRICS AND SEND THEM TO SERVER
     def collect_send_metrics(agent, task_id, data_block):
         #print("Collecting...")
@@ -352,7 +351,6 @@ def get_ip_address():
             return ip_address
         else:
             print("Invalid IP address format. Please try again.")
-
 
 def get_agent_id():
     id = input("Last but not least, what is this agent's id: ")
