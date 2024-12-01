@@ -128,6 +128,20 @@
                             "alert_con": 90
                         }
                     }
+                },
+
+                {
+                    "device_id": "a4",
+                    "link_metrics": {
+                        "bandwidth": {
+                            "active": true,
+                            "frequency": 10,
+                            "is_client": true,
+                            "duration": 5,
+                            "source_ip": "10.0.0.20",
+                            "destination_ip": "10.0.2.20"
+                        }
+                    }
                 }
             ]
         }

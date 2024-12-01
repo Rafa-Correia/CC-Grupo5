@@ -9,6 +9,7 @@ BANDWIDTH = 3
 JITTER = 4
 LOSS = 5
 LATENCY = 6
+OPEN = 7
 
 #data blocks that are sent by the server
 class DataBlockServer:   
@@ -148,10 +149,11 @@ class DataBlockServer:
 #data blocks that are sent by the client
 class DataBlockClient:
     #                  1B        1B/4B        xB
-    def __init__(self, id = CPU, m_value = 0, data = b''):
+    def __init__(self, id = CPU, m_value = 0, data = b'', udp_mode = False):
         self.id = id
         self.m_value = m_value
         self.data = data
+        self.udp_mode = udp_mode
         self.data_len = len(data)
 
         print(f"Created block with id: {self.id}, m_value: {self.m_value} and data: {self.data}")
@@ -169,33 +171,23 @@ class DataBlockClient:
             packed_len = struct.pack('!BH', self.id & 0xFF, self.data_len & 0xFFFF)
             return packed_len + self.data
         
+        elif self.id == OPEN:
+            print("Packing B4sB")
+            is_udp = 1 if self.udp_mode else 0
+            return struct.pack('!B4sB', self.id & 0xFF, self.data[:4], is_udp & 0xFF)
+        
         else:
             print("Packing Bi")
-            return struct.pack('!Bi', self.id & 0xFF, self.m_value)
-
-    def from_bytes(packed_data = b''):
-        if id == CPU or id == RAM or id == LOSS:
-            m_value = struct.unpack('!B', packed_data)
-            return DataBlockClient(id, m_value)
-        
-        elif id == INTERFACE:
-            data_len = struct.unpack('!H', packed_data)
-            encoded_data = packed_data[3:3+data_len]
-            return DataBlockClient(id, 0, encoded_data)
-        
-        else:
-            m_value = struct.unpack('!i', packed_data)
-            return DataBlockClient(id, m_value)
-        
+            return struct.pack('!Bi', self.id & 0xFF, self.m_value)       
 
     def separate_packed_data(packed_blocks):
-        # Define the mapping from ID to data length
-
         # Initialize an index to read through the packed byte stream
         index = 0
         data_blocks = []
         data = b''
         m_value = 0
+        is_udp = False
+        
 
         print(f"Separating {packed_blocks}")
 
@@ -211,7 +203,15 @@ class DataBlockClient:
                 str_len = struct.unpack('!H', packed_blocks[index:index+2])[0]
                 data_length = 2 + str_len
                 data = packed_blocks[index:index + data_length]
-            # Get the data length for this ID
+            
+            elif block_id == OPEN:
+                data, mode_n = struct.unpack('!4sB', packed_blocks[index:index+5])
+                if mode_n == 1:
+                    is_udp = True
+                else:
+                    is_udp = False
+                data_length = 5
+
             elif block_id == CPU or block_id == RAM or block_id == LOSS:
                 m_value = struct.unpack('!B', packed_blocks[index:index+1])[0]
                 data_length = 1
@@ -227,7 +227,8 @@ class DataBlockClient:
             index += data_length  # Move index past the data
 
             # Create a DataBlock object with the ID and data, and store it
-            data_block = DataBlockClient(block_id, m_value, data)
+            data_block = DataBlockClient(block_id, m_value, data, is_udp)
             data_blocks.append(data_block)
+        print(f"DataBlocks: {str(len(data_blocks))}")
         return data_blocks
         

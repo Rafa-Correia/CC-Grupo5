@@ -33,6 +33,13 @@ class Agent:
         self.m_queue = queue.Queue()
 
         self.lock = threading.Lock()
+        
+        self.iperf_port_counter = 5001
+        self.open_server_id = 0
+        self.open_server_info = {}
+
+        self.received_packet = None
+        self.received_address = None
     
 
     def initialize_connection(self):
@@ -59,36 +66,46 @@ class Agent:
 
 
     #SEND A PACKET AND WAIT FOR ACKNOWLEDGE, TRY AT MAX 10 TIMES
-    def send_packet(self, packet_stream, max_retries = 10):
+    def send_packet(self, packet_stream, max_retries = 100, address = None):
+        add = address if address != None else self.s_info
         retries = 0
         while retries < max_retries:
+            print(f"Sending packet to {add}...")
             try:
-                self.s_socket_NetTask.sendto(packet_stream, self.s_info)
+                with self.lock:
+                    self.s_socket_NetTask.sendto(packet_stream, add)
 
                 while True:
-                    response = self.s_socket_NetTask.recv(1024)
-                    p_len = len(response)
-
-                    packet = NetTask.from_bytes(response)
-                    if packet.flags & ACK:
-                        self.seq_number = packet.ack_num
-                        self.ack_number = packet.seq_num
-                        return True
+                    response, add = self.s_socket_NetTask.recvfrom(1024)
+                        
+                    print("Whoopee! Inside send_packet processing packet!")
                     
+                    p_len = len(response)
+                    print("Got response!")
+                    packet = NetTask.from_bytes(response)
+                    print(f"Flags are: {packet.flags}")
+                    if packet.flags & ACK:
+                        print("Is ack!")
+                        if packet.seq_num != 0 and packet.ack_num != 0:
+                            self.seq_number = packet.ack_num
+                            self.ack_number = packet.seq_num
+                        return packet
                     if packet.flags & ERR:
                         retries += 1
                         break
-
-                    self.process_packet(packet, p_len)
+                    self.process_packet(packet, p_len, add)
 
             except socket.timeout:
                 retries += 1
 
             except socket.error:
                 retries += 1
+                
+            return None
 
     #PROCESS A PACKET
-    def process_packet(self, packet, p_len):
+    def process_packet(self, packet, p_len, address):
+        print("Processing packet")
         if packet.flags & ACK:
             #drop packet / do nothing
             #dropped because ack is after timeout (all acknowledges are supposed to be received at most 2 seconds after packet is sent)
@@ -111,8 +128,26 @@ class Agent:
             self.ack_number = self.ack_number + p_len
             response = NetTask(self.seq_number, self.ack_number, ACK)
             #print("Sending acknowledge...")
-            self.s_socket_NetTask.sendto(response.to_bytes(), self.s_info)
+            with self.lock:
+                self.s_socket_NetTask.sendto(response.to_bytes(), self.s_info)
             #print("Done!")
+            return True
+        
+        elif packet.flags & REQ:
+            print("Got a request!")
+            open_requests = DataBlockClient.separate_packed_data(packet.payload)
+            b = open_requests[0]
+            ip = socket.inet_ntoa(b.data)
+            threading.Thread(target=Agent.open_iperf_server, args=[self.iperf_port_counter, ip, b.udp_mode], daemon=True).start()
+            print("Thread started!")
+            
+            ack_packet = NetTask(0, 0, ACK, self.iperf_port_counter)
+            print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
+            with self.lock:
+                self.s_socket_NetTask.sendto(ack_packet.to_bytes(), address)
+            
+            self.iperf_port_counter += 1
+            print("Port incremented!")          
             return True
         
         elif packet.flags & FIN:
@@ -123,7 +158,7 @@ class Agent:
             return True
 
     #COLLECT METRICS
-    def collect_metrics(id, duration, client_mode=True, source_ip ="0.0.0.0", destination_ip="0.0.0.0"):
+    def collect_metrics(id, duration, client_mode=True, source_ip ="0.0.0.0", destination_ip="0.0.0.0", agent = None, sv_id = -1):
         if id == CPU:
             cpu_usage_float = psutil.cpu_percent(duration)
             cpu_usage = int(cpu_usage_float) #round down percentage
@@ -136,26 +171,46 @@ class Agent:
             return ram_percent
         
         elif id == INTERFACE:
+            interface_pps_list = []
             interface_names = psutil.net_if_addrs().keys()
+            for i in interface_names:
+                #measure all pps
+                continue
             concatenated_names = ';'.join(interface_names) #join all interface names separated by ;
             return concatenated_names.encode('utf-8') #encode string to send
         
         elif id == BANDWIDTH:
-            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, False)
+            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, False, agent, sv_id)
             
         elif id == JITTER:
-            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip)
+            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, True, agent, sv_id)
         
         elif id == LOSS:
-            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip)
+            return Agent.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, True, agent, sv_id)
             
     
 
     #GET RESULT FROM IPERF, BE IT BANDWIDTH JITTER OR LOSS (specified by ID)
-    def get_from_iperf(id:int, duration, client_mode, source_ip, destination_ip, udp = True):
+    def get_from_iperf(id:int, duration, client_mode, source_ip, destination_ip, udp = True, agent = None, sv_id = -1):
+        with agent.lock:
+            sv_inf = agent.open_server_info[sv_id]
+        if sv_inf == None:
+            d_block = DataBlockClient(OPEN, 0, socket.inet_aton(destination_ip), udp)
+            request_open = NetTask(flags=REQ, payload=d_block.to_bytes())
+            add = (destination_ip, 65432)
+            q = queue.Queue()
+            agent.m_queue.put((request_open, add, q))
+            response = q.get()
+                    
+            sv_inf = (destination_ip, str(response.task_id))
+            with agent.lock:
+                agent.open_server_info[sv_id] = sv_inf
+        
+        
+        
         command = ["iperf"]
         if client_mode:
-            command += ["-c", destination_ip]
+            command += ["-c", sv_inf[0], "-p", sv_inf[1]]
         
         else:
             command.append("-s")
@@ -168,10 +223,16 @@ class Agent:
             command += ["-b", "10M"]
         
         try:
-            result = subprocess.run(command, capture_output=True, text=True, check= True)
-            output = result.stdout
-        except:
-            print("Could run iperf.")
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check= True)
+            if result.returncode!=0:
+                error = result.stderr
+                print(f"Error is: {error}")
+                return None
+            else:
+                output = result.stdout
+                print(output)
+        except Exception as e:
+            print(f"Couldn't run iperf: {str(e)}")
             return None
         
 
@@ -185,28 +246,28 @@ class Agent:
                 if unit == "Gbits/sec":
                     bandwidth *= 1000
 
-                return bandwidth
+                return int(bandwidth)
             else:
                 print("Could not parse Bandwidth from iperf output")
-                return None
+                return 0
             
         elif id == JITTER:
             match = re.search(r"([\d.]+)\sms", output)
             if match:
                 jitter = float(match.group(1))  # Extract the jitter value
-                return jitter
+                return int(jitter)
             else:
                 print("Could not parse Jitter from iperf output")
-                return None
+                return 0
             
         elif id == LOSS:
             match = re.search(r"\(([\d.]+)%\)", output)
             if match:
                 loss_percentage = float(match.group(1))  # Extract the loss percentage
-                return loss_percentage
+                return int(loss_percentage)
             else:
                 print("Could not parse Loss Percentage from iperf output")
-                return None
+                return 0
             
         else: 
             return None
@@ -220,8 +281,16 @@ class Agent:
         frequency = data_block.frequency
         duration = data_block.duration
         sleep_time = frequency - duration #duration of measurement is allways expected to be smaller than frequency of measurement
+        sv_id = -1
+        if data_block.id == BANDWIDTH or data_block.id == JITTER or data_block.id == LOSS:
+            sv_id = agent.open_server_id 
+            sv_inf = agent.open_server_info.get(sv_id, None)
+            if sv_inf == None:
+                agent.open_server_info[sv_id] = None
+            
         while True:
-            metrics = Agent.collect_metrics(id, duration)
+            print(f"Collecting {id}...")
+            metrics = Agent.collect_metrics(id, duration, True, data_block.source_ip, data_block.destination_ip, agent, sv_id)
             if metrics == None:
                 continue #nothing happens if cant measure
 
@@ -239,27 +308,39 @@ class Agent:
             packet = NetTask(agent.seq_number, agent.ack_number, REPORT, task_id, block_stream)
 
             with agent.lock:
-                agent.m_queue.put(packet)
+                agent.m_queue.put((packet, agent.s_info, None))
 
             time.sleep(sleep_time)
 
-    
+    def open_iperf_server(port, ip, udp_mode):
+        command=["iperf", "-s", "-p", str(port), "-B", ip]
+        print(f"Running following command: {command}")
+        if udp_mode:
+            command.append("-u")
+            
+        subprocess.run(command)
+        
 
     def run(self):
         self.initialize_connection()
         while True:
             try:
                 while not self.m_queue.empty():
-                    p = self.m_queue.get()
-                    print(str(p.flags))
-                    self.send_packet(p.to_bytes())
-                packet_stream = self.s_socket_NetTask.recv(1024)
+                    p, addr, q = self.m_queue.get()
+                    print(f"Processing from queue: {p}, {addr}, {q}")
+                    response = self.send_packet(p.to_bytes(), address=addr)
+                    if q is not None:
+                        q.put(response)
+                packet_stream, address = self.s_socket_NetTask.recvfrom(1024)
+
+                print("Got a packet.")
                 p_len = len(packet_stream)
                 packet = NetTask.from_bytes(packet_stream)
-                self.process_packet(packet, p_len)
-                packet = None
+                self.process_packet(packet, p_len, address)
+
+                
             except Exception as e:
-                #print("Exception: " + str(e))
+                print("Exception: " + str(e))
                 continue
 
 def get_ip_address():

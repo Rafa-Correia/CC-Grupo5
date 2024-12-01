@@ -9,8 +9,9 @@ SYN     = 0b00000001
 ACK     = 0b00000010
 TASK    = 0b00000100
 REPORT  = 0b00001000
-ERR     = 0b00010000
-FIN     = 0b00100000
+REQ     = 0b00010000
+ERR     = 0b00100000
+FIN     = 0b01000000
 
 class NetTask:
     def __init__(self, seq_num=0, ack_num=0, flags=0, task_id = 0, payload=b''):
