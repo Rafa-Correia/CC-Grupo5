@@ -156,28 +156,25 @@ class DataBlockClient:
         self.udp_mode = udp_mode
         self.data_len = len(data)
 
-        print(f"Created block with id: {self.id}, m_value: {self.m_value} and data: {self.data}")
-
-        if self.id == CPU:
-            print("IS CPU!")
+        #print(f"Created block with id: {self.id}, m_value: {self.m_value} and data: {self.data}")
 
     def to_bytes(self):
         if self.id == CPU or self.id == RAM or self.id == LOSS:
-            print("Packing BB")
+            #print("Packing BB")
             return struct.pack('!BB', self.id & 0xFF, self.m_value & 0xFF)
 
         elif self.id == INTERFACE:
-            print("Packing BH")
+            #print("Packing BH")
             packed_len = struct.pack('!BH', self.id & 0xFF, self.data_len & 0xFFFF)
             return packed_len + self.data
         
         elif self.id == OPEN:
-            print("Packing B4sB")
+            #print("Packing B4sB")
             is_udp = 1 if self.udp_mode else 0
             return struct.pack('!B4sB', self.id & 0xFF, self.data[:4], is_udp & 0xFF)
         
         else:
-            print("Packing Bi")
+            #print("Packing Bi")
             return struct.pack('!Bi', self.id & 0xFF, self.m_value)       
 
     def separate_packed_data(packed_blocks):
@@ -189,7 +186,7 @@ class DataBlockClient:
         is_udp = False
         
 
-        print(f"Separating {packed_blocks}")
+        #print(f"Separating {packed_blocks}")
 
         # Unpack each block and use from_bytes to create DataBlock objects with ID
         while index < len(packed_blocks):
@@ -229,6 +226,6 @@ class DataBlockClient:
             # Create a DataBlock object with the ID and data, and store it
             data_block = DataBlockClient(block_id, m_value, data, is_udp)
             data_blocks.append(data_block)
-        print(f"DataBlocks: {str(len(data_blocks))}")
+        #print(f"DataBlocks: {str(len(data_blocks))}")
         return data_blocks
         

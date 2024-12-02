@@ -1,0 +1,34 @@
+{
+    "tasks":[
+        {
+            "task_id": 2,
+            "devices":[
+                {
+                    "device_id": "a1",
+                    "device_metrics": {
+                        "ram": {
+                            "active": true,
+                            "frequency": 5,
+                            "alert_con": 70
+                        }
+                    }
+                },
+
+                {
+                    "device_id": "a2",
+                    "link_metrics": {
+                        "jitter": {
+                            "active": true,
+                            "frequency": 10,
+                            "alert_con": 100,
+                            "is_client": true,
+                            "duration": 5,
+                            "source_ip": "10.0.1.20",
+                            "destination_ip": "10.0.2.20"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}
