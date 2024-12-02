@@ -50,8 +50,12 @@ class MetricCollector(threading.Thread):
             if id == CPU or id == RAM or id == JITTER or id == LOSS:
                 if metrics > self.data_block.max_value:
                     #alert
-                    print("ALERT")
+                    print(f"ALERT: {metrics}")
                     #send through alertflow
+                    alert_packet = AlertFlow(id, metrics)
+                    with agent.lock:
+                        agent.m_queue.put((alert_packet, None, None, True))
+
                     time.sleep(sleep_time)
                     continue
                 else:
@@ -294,6 +298,14 @@ class Agent:
                 #print("Something went wrong: " + str(e))
                 continue
         
+        print(f"Trying to connect Alert Socket in {self.s_info_AlertFlow}")
+        while True:
+            try:
+                self.s_socket_AlertFlow.connect(self.s_info_AlertFlow)
+                break
+            except Exception as e:
+                print(f"Exception: {str(e)}")
+
         return True
 
 
@@ -342,8 +354,8 @@ class Agent:
     #================================================================================
     #                             SEND ALERTFLOW PACKET
     #================================================================================
-    def send_packet_AlertFlow():
-        return
+    def send_packet_AlertFlow(self, packet_stream):
+        self.s_socket_AlertFlow.send(packet_stream)
 
 
 
@@ -351,7 +363,7 @@ class Agent:
     #                              PROCESS NETTASK PACKET
     #================================================================================
     def process_packet(self, packet, p_len, address):
-        print("Processing packet")
+        #print("Processing packet")
         if packet.flags & ACK:
             #drop packet / do nothing
             #dropped because ack is after timeout (all acknowledges are supposed to be received at most 2 seconds after packet is sent)
@@ -381,18 +393,18 @@ class Agent:
             return True
         
         elif packet.flags & REQ:
-            print("Got a request!")
+            #print("Got a request!")
             open_requests = DataBlockClient.separate_packed_data(packet.payload)
             b = open_requests[0]
             ip = socket.inet_ntoa(b.data)
-            print(f"Trying to create an iperf server thread with address {ip}:{self.iperf_port_counter} (udp: {b.udp_mode})")
+            #print(f"Trying to create an iperf server thread with address {ip}:{self.iperf_port_counter} (udp: {b.udp_mode})")
             t = IperfThread(self.iperf_port_counter, ip, b.udp_mode)
             t.start()
             self.threads.append(t)
-            print("Thread started!")
+            #print("Thread started!")
             
             ack_packet = NetTask(0, 0, ACK, self.iperf_port_counter)
-            print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
+            #print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
             self.s_socket_NetTask.sendto(ack_packet.to_bytes(), address)
             
             self.iperf_port_counter += 1
@@ -400,7 +412,7 @@ class Agent:
             return True
         
         elif packet.flags & FIN:
-            print("Got FIN!")
+            #print("Got FIN!")
             final_packet = NetTask(self.seq_number, self.ack_number, ACK | FIN)
             self.s_socket_NetTask.sendto(final_packet.to_bytes(), self.s_info_NetTask)
             self.stop()
@@ -422,6 +434,7 @@ class Agent:
                         p, addr, q, alert = self.m_queue.get()
                     #print(f"Processing from queue: {p}, {addr}, {q}")
                     if alert:
+                        self.send_packet_AlertFlow(p.to_bytes())
                         continue
 
                     response = self.send_packet_NetTask(p.to_bytes(), address=addr)

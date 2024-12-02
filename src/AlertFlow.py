@@ -4,60 +4,47 @@ import threading
 import os
 import struct
 
-CPU         = 0b00000001
-RAM         = 0b00000010
-INTERFACE   = 0b00000100
-JITTER      = 0b00001000
-LOSS        = 0b00010000
-ALERT       = 0b00100000
-ERR         = 0b01000000
+CPU         = 0
+RAM         = 1
+INTERFACE   = 2
+JITTER      = 3
+LOSS        = 4
+
 
 class AlertFlow:
-    def __init__(self, flags = CPU, m_value = 0, payload = b''):
-        self.flags = flags
+    def __init__(self, id = CPU, m_value = 0, payload = b''):
+        self.id = id
         self.m_value = m_value
         self.payload = payload
         
     def to_bytes(self):
-        if self.flags & ERR:
-            return struct.pack('!B', self.flags & 0xFF)
+        if self.id & CPU or self.id & RAM or self.id & LOSS:
+            return struct.pack('!BB', self.id & 0xFF, self.m_value & 0xFF)
         
-        if not self.flags & ALERT and not self.flags & ERR:
-            return None #SHOULD ALLWAYS HAVE ERR OR ALERT
+        elif self.id & JITTER:
+            return struct.pack('!Bi', self.id & 0xFF, self.m_value)
         
-        if self.flags & CPU or self.flags & RAM or self.flags & LOSS:
-            return struct.pack('!BB', self.flags & 0xFF, self.m_value & 0xFF)
-        
-        elif self.flags & JITTER:
-            return struct.pack('!Bi', self.flags & 0xFF, self.m_value)
-        
-        elif self.flags & INTERFACE:
+        elif self.id & INTERFACE:
             s_len = len(self.payload)
-            packed_data = struct.pack('!BiH', self.flags & 0xFF, self.m_value, s_len)
+            packed_data = struct.pack('!BiH', self.id & 0xFF, self.m_value, s_len)
             return packed_data + self.payload
         
         return None
         
     def from_bytes(packet_stream):
-        flags = struct.unpack('!B', packet_stream[:1])[0]
-        if flags & ERR:
-            return AlertFlow(flags=flags)
-        
-        if not flags & ERR and not flags & ALERT:
-            return None
-        
-        if flags & CPU or flags & RAM or flags & LOSS:
+        id = struct.unpack('!B', packet_stream[:1])[0]
+        if id == CPU or id == RAM or id == LOSS:
             m_value = struct.unpack('!B', packet_stream[1:2])[0]
-            return AlertFlow(flags=flags, m_value=m_value)
+            return AlertFlow(id , m_value)
         
-        elif flags & JITTER:
+        elif id == JITTER:
             m_value = struct.unpack('!i', packet_stream[1:5])[0]
-            return AlertFlow(flags=flags, m_value=m_value)
+            return AlertFlow(id, m_value)
         
-        elif flags & INTERFACE:
+        elif id == INTERFACE:
             m_value, s_len = struct.unpack('!iH', packet_stream[1:7])
             payload = packet_stream[7:7+s_len]
-            return AlertFlow(flags=flags, m_value=m_value, payload=payload)
+            return AlertFlow(id, m_value, payload)
         
         return None
             

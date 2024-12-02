@@ -30,14 +30,18 @@ def apresentar_metricas(server: Server):
         print("1. Apresentar agentes registados")
         print("2. Apresentar metricas coletadas por Agente")
         print("3. Apresentar alertas dados por Agente")
+        print("4. Voltar ao menu anterior")
 
         selection = input("Escolha uma opção: ")
         if selection == "1":
             server.print_registered_agents()
-            return
         elif selection == "2":
             agent_id = input("ID do Agente: ")
             server.print_agent_data(agent_id)
+        elif selection == "3":
+            agent_id = input("ID do Agente: ")
+            server.print_agent_alerts(agent_id)
+        elif selection == "4":
             return
 
         else:

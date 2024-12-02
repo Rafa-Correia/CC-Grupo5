@@ -115,9 +115,6 @@ class Server:
         except Exception as e:
             print(f"Oh... {e}")
 
-    def process_AlertFlow_packet(self, packet):
-        return
-
     def send_packet(self, packet_stream, address, max_retries = 10):
         retries = 0
         while retries < max_retries:
@@ -240,12 +237,39 @@ class Server:
         else:
             print("\tNone.")
 
+    def print_agent_alerts(self, agent_id):
+        id_to_string = {
+            CPU: "CPU",
+            RAM: "RAM",
+            INTERFACE: "INTERFACE",
+            BANDWIDTH: "BANDWIDTH",
+            JITTER: "JITTER",
+            LOSS: "LOSS",
+            LATENCY: "LATENCY"
+        }
+
+        print(f"From agent {agent_id}:")
+        alert_list = self.agent_alerts[agent_id]
+        count = 1
+        if not alert_list:
+            print("\tNo alerts!")
+        for a in alert_list:
+            print(f"----------{count}----------")
+            print(f"\tMetric: {id_to_string[a.id]}\n\tMeasured Value: {a.m_value}")
+            if a.payload != b'':
+                print(f"\tData: {a.payload}")
+            print(f"------------------------------")
+
     def stop_server(self):
         agent_list = self.agent_registry.keys()
         for a in agent_list:
             print(f"Finalizing conection with {a}...")
             self.send_fin(a)
             continue
+
+        for sock in self.alert_sockets:
+            sock.close()
+            
         return
     
     def send_fin(self, agent_id):
