@@ -1,5 +1,4 @@
 import socket
-import json
 import threading
 import subprocess
 import time
@@ -64,7 +63,7 @@ class MetricCollector(threading.Thread):
             elif id == INTERFACE:
                 block = DataBlockClient(id, data=metrics)
 
-            elif id == BANDWIDTH:
+            elif id == BANDWIDTH or id == LATENCY:
                 block = DataBlockClient(id, metrics)
 
 
@@ -113,8 +112,34 @@ class MetricCollector(threading.Thread):
             return MetricCollector.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, True, agent, sv_id)
         
         elif id == LATENCY:
-            #measure latency using ping?
-            return 1
+            command = ["ping"]
+            if source_ip != "0.0.0.0":
+                command.append("-I")
+                command.append(source_ip)
+
+            command.append("-w")
+            command.append(str(duration))
+            command.append(destination_ip)
+
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            if result.returncode != 0:
+                print(f"Ping failed to run: {result.stderr.strip()}")
+                return -1
+            
+            match = re.search(r"rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms", result.stdout)
+            if match:
+                latency = {
+                    "min": float(match.group(1)),
+                    "avg": float(match.group(2)),
+                    "max": float(match.group(3)),
+                    "mdev": float(match.group(4)),
+                }
+                return int(latency["avg"])
+            else:
+                print("Could not parse latency information.")
+                return -1
+
             
     
 
@@ -131,7 +156,7 @@ class MetricCollector(threading.Thread):
             q = queue.Queue()
             agent.m_queue.put((request_open, add, q, False))
             response = q.get()
-            print(f"Response is {response}")
+            #print(f"Response is {response}")
             sv_inf = (destination_ip, str(response.task_id))
             with agent.lock:
                 agent.open_server_info[sv_id] = sv_inf
@@ -298,7 +323,7 @@ class Agent:
                 #print("Something went wrong: " + str(e))
                 continue
         
-        print(f"Trying to connect Alert Socket in {self.s_info_AlertFlow}")
+        #print(f"Trying to connect Alert Socket in {self.s_info_AlertFlow}")
         while True:
             try:
                 self.s_socket_AlertFlow.connect(self.s_info_AlertFlow)
@@ -317,21 +342,21 @@ class Agent:
         add = address if address != None else self.s_info_NetTask
         retries = 0
         while retries < max_retries:
-            print(f"Sending packet to {add}...")
+            #print(f"Sending packet to {add}...")
             try:
                 self.s_socket_NetTask.sendto(packet_stream, add)
 
                 while True:
                     response, add = self.s_socket_NetTask.recvfrom(1024)
                         
-                    print("Whoopee! Inside send_packet processing packet!")
+                    #print("Whoopee! Inside send_packet processing packet!")
                     
                     p_len = len(response)
-                    print("Got response!")
+                    #print("Got response!")
                     packet = NetTask.from_bytes(response)
-                    print(f"Flags are: {packet.flags}")
+                    #print(f"Flags are: {packet.flags}")
                     if packet.flags & ACK:
-                        print("Is ack!")
+                        #print("Is ack!")
                         if packet.seq_num != 0 and packet.ack_num != 0:
                             self.seq_number = packet.ack_num
                             self.ack_number = packet.seq_num

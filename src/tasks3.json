@@ -27,6 +27,19 @@
                             "destination_ip": "10.0.2.20"
                         }
                     }
+                },
+
+                {
+                    "device_id": "a3",
+                    "link_metrics": {
+                        "latency": {
+                            "active": true,
+                            "frequency": 10,
+                            "duration": 3,
+                            "source_ip": "10.0.1.20",
+                            "destination_ip": "10.0.2.20"
+                        }
+                    }
                 }
             ]
         }
