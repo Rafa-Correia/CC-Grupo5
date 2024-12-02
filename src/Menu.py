@@ -75,6 +75,7 @@ def main():
             apresentar_metricas(server)
         elif escolha == "0":
             print("Encerrando o programa. Até logo!")
+            server.stop_server()
             break
         else:
             print("Opção inválida. Tente novamente.")

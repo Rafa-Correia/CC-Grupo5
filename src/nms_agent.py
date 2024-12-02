@@ -127,7 +127,7 @@ class MetricCollector(threading.Thread):
             q = queue.Queue()
             agent.m_queue.put((request_open, add, q, False))
             response = q.get()
-                    
+            print(f"Response is {response}")
             sv_inf = (destination_ip, str(response.task_id))
             with agent.lock:
                 agent.open_server_info[sv_id] = sv_inf
@@ -200,20 +200,22 @@ class MetricCollector(threading.Thread):
 
 class IperfThread(threading.Thread):
     def __init__(self, port, ip, udp_mode):
-        super.__init__()
+        super().__init__()
         self.port = port
         self.ip = ip
         self.udp_mode = udp_mode
 
         self.iperf_process = None
 
+        print(f"Created iperf thread of address {self.ip}:{self.port} (UDP: {self.udp_mode})")
+
         self.stop_event = threading.Event()
 
-    def run(self, port, ip, udp_mode):
+    def run(self):
         try:
-            command=["iperf", "-s", "-p", str(port), "-B", ip]
+            command=["iperf", "-s", "-p", str(self.port), "-B", self.ip]
             #print(f"Running following command: {command}")
-            if udp_mode:
+            if self.udp_mode:
                 command.append("-u")
 
             self.iperf_process = subprocess.Popen(command)
@@ -303,21 +305,21 @@ class Agent:
         add = address if address != None else self.s_info_NetTask
         retries = 0
         while retries < max_retries:
-            #print(f"Sending packet to {add}...")
+            print(f"Sending packet to {add}...")
             try:
                 self.s_socket_NetTask.sendto(packet_stream, add)
 
                 while True:
                     response, add = self.s_socket_NetTask.recvfrom(1024)
                         
-                    #print("Whoopee! Inside send_packet processing packet!")
+                    print("Whoopee! Inside send_packet processing packet!")
                     
                     p_len = len(response)
-                    #print("Got response!")
+                    print("Got response!")
                     packet = NetTask.from_bytes(response)
-                    #print(f"Flags are: {packet.flags}")
+                    print(f"Flags are: {packet.flags}")
                     if packet.flags & ACK:
-                        #print("Is ack!")
+                        print("Is ack!")
                         if packet.seq_num != 0 and packet.ack_num != 0:
                             self.seq_number = packet.ack_num
                             self.ack_number = packet.seq_num
@@ -349,7 +351,7 @@ class Agent:
     #                              PROCESS NETTASK PACKET
     #================================================================================
     def process_packet(self, packet, p_len, address):
-        #print("Processing packet")
+        print("Processing packet")
         if packet.flags & ACK:
             #drop packet / do nothing
             #dropped because ack is after timeout (all acknowledges are supposed to be received at most 2 seconds after packet is sent)
@@ -365,7 +367,7 @@ class Agent:
                 #print("Now measuring metrics...")
                 blocks = DataBlockServer.separate_packed_data(packet.payload)
                 for block in blocks:
-                    print("Trying to create a metric collector!")
+                    #print("Trying to create a metric collector!")
                     t = MetricCollector(self, task_id, block)
                     t.start()
                     self.threads.append(t)
@@ -379,17 +381,18 @@ class Agent:
             return True
         
         elif packet.flags & REQ:
-            #print("Got a request!")
+            print("Got a request!")
             open_requests = DataBlockClient.separate_packed_data(packet.payload)
             b = open_requests[0]
             ip = socket.inet_ntoa(b.data)
+            print(f"Trying to create an iperf server thread with address {ip}:{self.iperf_port_counter} (udp: {b.udp_mode})")
             t = IperfThread(self.iperf_port_counter, ip, b.udp_mode)
             t.start()
             self.threads.append(t)
-            #print("Thread started!")
+            print("Thread started!")
             
             ack_packet = NetTask(0, 0, ACK, self.iperf_port_counter)
-            #print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
+            print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
             self.s_socket_NetTask.sendto(ack_packet.to_bytes(), address)
             
             self.iperf_port_counter += 1
@@ -397,6 +400,9 @@ class Agent:
             return True
         
         elif packet.flags & FIN:
+            print("Got FIN!")
+            final_packet = NetTask(self.seq_number, self.ack_number, ACK | FIN)
+            self.s_socket_NetTask.sendto(final_packet.to_bytes(), self.s_info_NetTask)
             self.stop()
             return True
 
@@ -434,9 +440,14 @@ class Agent:
                 continue
 
     def stop(self):
+        print("Stopping agent!")
         self.running = False
         for t in self.threads:
+            print(f"Stopping thread {t}")
             t.stop()
+
+        self.s_socket_AlertFlow.close()
+        self.s_socket_NetTask.close()
 
 def get_ip_address():
     while True:

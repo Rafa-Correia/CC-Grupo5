@@ -241,8 +241,38 @@ class Server:
             print("\tNone.")
 
     def stop_server(self):
-        #finalize connection with each agent
+        agent_list = self.agent_registry.keys()
+        for a in agent_list:
+            print(f"Finalizing conection with {a}...")
+            self.send_fin(a)
+            continue
         return
+    
+    def send_fin(self, agent_id):
+        agent_address, seq, ack = self.agent_registry[agent_id]
+        final_packet = NetTask(seq, ack, FIN)
+        while True:
+            try:
+                print(f"Sending FIN packet to {agent_address}")
+                self.server_socket_NetTask.sendto(final_packet.to_bytes(), agent_address)
+                while True:
+                    rec_stream, rec_address = self.server_socket_NetTask.recvfrom(1024)
+                    if rec_address != agent_address:
+                        continue
+
+                    rec_packet = NetTask.from_bytes(rec_stream)
+                    if rec_packet.flags & FIN and rec_packet.flags & ACK:
+                        print("Got a FINACK from the agent!")
+                        return
+                    else:
+                        continue
+            except OSError:
+                print("Socket has been closed already!")
+                break
+
+            except:
+                continue
+
 if __name__ == "__main__":
 
     server = Server()
