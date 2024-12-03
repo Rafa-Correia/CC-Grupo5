@@ -1,0 +1,114 @@
+{
+    "tasks":[
+        {
+            "task_id": 1,
+            "devices":[
+                {
+                    "device_id": "useless_format_showcase",
+                    "device_metrics": {
+                        "cpu": {
+                            "active": true,
+                            "frequency": 5,
+                            "duration": 2,
+                            "alert_con": 90
+                        },
+                        "ram": {
+                            "active": false,
+                            "frequency": 0,
+                            "alert_con": 0
+                        },
+                        "interface": {
+                            "active": true,
+                            "frequency": 10,
+                            "duration": 5,
+                            "alert_con": 1000
+                        }
+                    },
+                    "link_metrics": {
+                        "bandwidth": {
+                            "active": true,
+                            "frequency": 10,
+                            "is_client": true,
+                            "duration": 2,
+                            "source_ip": "10.0.0.10",
+                            "destination_ip": "10.0.1.10"
+                        },
+                        "jitter": {
+                            "active": false,
+                            "frequency": 0,
+                            "alert_con": 0,
+                            "is_client": false,
+                            "duration": 0,
+                            "source_ip": "0.0.0.0",
+                            "destination_ip": "0.0.0.0"
+                        },
+                        "loss": {
+                            "active": true,
+                            "frequency": 15,
+                            "alert_con": 5,
+                            "is_client": true,
+                            "duration": 5,
+                            "source_ip": "10.0.0.10",
+                            "destination_ip": "10.0.1.10"
+                        },
+                        "latency": {
+                            "active": true,
+                            "frequency": 20,
+                            "duration": 2,
+                            "source_ip": "10.0.0.10",
+                            "destination_ip": "10.0.1.10"
+                        }
+                    }
+                },
+
+                {
+                    "device_id": "a1",
+                    "device_metrics": {
+                        "cpu": {
+                            "active": true,
+                            "frequency":10,
+                            "duration":5,
+                            "alert_con": 90
+                        },
+
+                        "ram": {
+                            "active": true,
+                            "frequency": 5,
+                            "alert_con": 70
+                        }
+                    }
+                },
+
+                {
+                    "device_id": "a2",
+                    "device_metrics": {
+                        "interface": {
+                            "active": true,
+                            "frequency": 10,
+                            "duration": 2,
+                            "alert_con": 100
+                        }
+                    },
+
+                    "link_metrics": {
+                        "bandwidth": {
+                            "active": true,
+                            "frequency": 10,
+                            "duration": 5,
+                            "source_ip": "10.0.6.10",
+                            "destination_ip": "10.0.5.10"
+                        },
+
+                        "latency": {
+                            "active": true,
+                            "frequency": 10,
+                            "duration": 5,
+                            "source_ip": "10.0.6.10",
+                            "destination_ip": "10.0.5.10"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

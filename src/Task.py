@@ -45,8 +45,9 @@ class PerDeviceTask: #note, while a task may have many devices, this class conta
         interface_active = self.interface_inf.get("active", False)
         if interface_active:
             interface_freq = self.interface_inf.get("frequency", 0)
+            interface_duration = self.interface_inf.get("duration", 1)
             interface_alert = self.interface_inf.get("alert_con", 0)
-            interface_block = DataBlockServer(id=INTERFACE, frequency=interface_freq, max_value=interface_alert)
+            interface_block = DataBlockServer(id=INTERFACE, frequency=interface_freq, max_value=interface_alert, duration=interface_duration)
             blocks.append(interface_block)
 
         #==============================================================

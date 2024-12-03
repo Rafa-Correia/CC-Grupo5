@@ -21,7 +21,7 @@ class MetricCollector(threading.Thread):
 
         self.stop_event = threading.Event()
 
-        print("Metric collector created!")
+        #print("Metric collector created!")
 
     def run(self):
         #print("Collecting...")
@@ -49,7 +49,7 @@ class MetricCollector(threading.Thread):
             if id == CPU or id == RAM or id == JITTER or id == LOSS:
                 if metrics > self.data_block.max_value:
                     #alert
-                    print(f"ALERT: {metrics}")
+                    #print(f"ALERT: {metrics}")
                     #send through alertflow
                     alert_packet = AlertFlow(id, metrics)
                     with agent.lock:
@@ -60,32 +60,49 @@ class MetricCollector(threading.Thread):
                     block = DataBlockClient(id, metrics)
 
             elif id == INTERFACE:
-                names = ";".join(metrics.keys()).encode("utf-8")
 
                 to_del = []
                 for i_name, pps in metrics.items():
                     if pps > self.data_block.max_value:
-                        print(f"Alert: for {i_name} -> pps is {pps}")
-                        alert_packet = AlertFlow(id, pps, i_name)
+                        #print(f"Alert: for {i_name} -> pps is {pps}")
+                        alert_packet = AlertFlow(id, pps, i_name.encode("utf-8"))
                         with agent.lock:
                             agent.m_queue.put((alert_packet, None, None, True))
+                        #print("Alert in queue")
                         to_del.append(i_name)
 
                 for n in to_del:
                     del metrics[n]
+                    
+                del metrics["lo"]
+                
+                names = ";".join(metrics.keys()).encode("utf-8")
 
                 pps_list = list(metrics.values())
                 pps_list_stream = b''
                 
                 for p in pps_list:
                     pps_list_stream += struct.pack('!i', p)
+                    
+                if not pps_list:
+                    continue
 
                 block = DataBlockClient(INTERFACE, 0, names, False, pps_list_stream)
 
 
-            elif id == BANDWIDTH or id == LATENCY:
+            elif id == BANDWIDTH:
                 block = DataBlockClient(id, metrics)
+                
+            elif id == LATENCY:
+                if metrics == -1:
+                    alert_packet = AlertFlow(id, -1)
+                    with agent.lock:
+                        agent.m_queue.put((alert_packet, None, None, True))
+                    time.sleep(sleep_time)
+                    continue    
 
+                block = DataBlockClient(id, metrics)
+                    
 
             block_stream = block.to_bytes()
             packet = NetTask(agent.seq_number, agent.ack_number, REPORT, self.task_id, block_stream)
@@ -262,12 +279,12 @@ class MetricCollector(threading.Thread):
     #                           GET PPS OF SINGLE INTERFACE
     #================================================================================
     def get_interface_pps(interface, duration, results):
-        print(f"Measuring PPS on interface '{interface}' for {duration} seconds...")
+        #print(f"Measuring PPS on interface '{interface}' for {duration} seconds...")
 
         # Get initial packet counts
         initial_stats = psutil.net_io_counters(pernic=True).get(interface)
         if initial_stats is None:
-            print(f"Interface '{interface}' not found!")
+            #print(f"Interface '{interface}' not found!")
             results[interface] = None
             return
 
@@ -280,7 +297,7 @@ class MetricCollector(threading.Thread):
         # Get final packet counts
         final_stats = psutil.net_io_counters(pernic=True).get(interface)
         if final_stats is None:
-            print(f"Interface '{interface}' no longer available!")
+            #print(f"Interface '{interface}' no longer available!")
             results[interface] = None
             return
 
@@ -410,7 +427,7 @@ class Agent:
     #================================================================================
     #                               SEND NETTASK PACKET
     #================================================================================
-    def send_packet_NetTask(self, packet_stream, max_retries = 100, address = None):
+    def send_packet_NetTask(self, packet_stream, max_retries = 10, address = None):
         add = address if address != None else self.s_info_NetTask
         retries = 0
         while retries < max_retries:
@@ -527,12 +544,15 @@ class Agent:
         self.initialize_connection()
         while self.running:
             try:
+                print("In running...")
                 while not self.m_queue.empty():
                     with self.lock:
                         p, addr, q, alert = self.m_queue.get()
-                    #print(f"Processing from queue: {p}, {addr}, {q}")
+                    print(f"Processing from queue: {p}, {addr}, {q}")
                     if alert:
+                        print("Is alert!")
                         self.send_packet_AlertFlow(p.to_bytes())
+                        print("after send")
                         continue
 
                     response = self.send_packet_NetTask(p.to_bytes(), address=addr)

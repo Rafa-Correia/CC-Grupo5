@@ -78,6 +78,7 @@ class Server:
                     if data:
                         alert_packet = AlertFlow.from_bytes(data)
                         agent_id = self.alert_to_agent_id[sock]
+                        #print(f"Got alert from {agent_id}")
                         alert_list = self.agent_alerts.get(agent_id, None)
                         if alert_list is None:
                             alert_list = []
@@ -238,7 +239,9 @@ class Server:
                     #print(pps_list)
                     i_pps = dict(zip(interface_names, pps_list))
                     for i_name, pps in i_pps.items():
-                        print(f"\tInterface {i_name} --> {pps} packets per second.")
+                        print(f"Interface {i_name} --> {pps} packets per second.")
+                    
+                    print(f"---------------------------")
                     continue
 
                 unit = ""
@@ -268,18 +271,17 @@ class Server:
 
         print(f"From agent {agent_id}:")
         alert_list = self.agent_alerts.get(agent_id, None)
-        if alert_list is None:
-            print("\tUser is not registered (or error)")
-            return
         count = 1
         if not alert_list:
             print("\tNo alerts!")
+            return
         for a in alert_list:
             print(f"----------{count}----------")
             print(f"\tMetric: {id_to_string[a.id]}\n\tMeasured Value: {a.m_value}")
             if a.payload != b'':
                 print(f"\tData: {a.payload}")
             print(f"------------------------------")
+            count += 1
 
     def stop_server(self):
         agent_list = self.agent_registry.keys()
