@@ -21,7 +21,7 @@ class MetricCollector(threading.Thread):
 
         self.stop_event = threading.Event()
 
-        #print("Metric collector created!")
+        print("Metric collector created!")
 
     def run(self):
         #print("Collecting...")
@@ -54,14 +54,28 @@ class MetricCollector(threading.Thread):
                     alert_packet = AlertFlow(id, metrics)
                     with agent.lock:
                         agent.m_queue.put((alert_packet, None, None, True))
-
-                    time.sleep(sleep_time)
                     continue
                 else:
                     block = DataBlockClient(id, metrics)
 
             elif id == INTERFACE:
-                block = DataBlockClient(id, data=metrics)
+                names = ";".join(metrics.keys()).encode("utf-8")
+                pps_list = list(metrics.values())
+                pps_list_stream = b''
+
+                for i_name, pps in metrics.items():
+                    if pps > self.data_block.max_value:
+                        print(f"Alert: for {i_name} -> pps is {pps}")
+                        alert_packet = AlertFlow(id, pps, i_name)
+                        with agent.lock:
+                            agent.m_queue.put((alert_packet, None, None, True))
+                        del metrics[i_name]
+
+                for p in pps_list:
+                    pps_list_stream += struct.pack('!i', p)
+
+                block = DataBlockClient(INTERFACE, 0, names, False, pps_list_stream)
+
 
             elif id == BANDWIDTH or id == LATENCY:
                 block = DataBlockClient(id, metrics)
@@ -81,7 +95,7 @@ class MetricCollector(threading.Thread):
     #================================================================================
     #                                METRIC COLLECTION
     #================================================================================
-    def collect_metrics(id, duration, client_mode=True, source_ip ="0.0.0.0", destination_ip="0.0.0.0", agent = None, sv_id = -1):
+    def collect_metrics(id, duration = 1, client_mode=True, source_ip ="0.0.0.0", destination_ip="0.0.0.0", agent = None, sv_id = -1):
         if id == CPU:
             cpu_usage_float = psutil.cpu_percent(duration)
             cpu_usage = int(cpu_usage_float) #round down percentage
@@ -94,13 +108,22 @@ class MetricCollector(threading.Thread):
             return ram_percent
         
         elif id == INTERFACE:
-            interface_pps_list = []
+            threads = []
+            interface_pps_list = {}
             interface_names = psutil.net_if_addrs().keys()
             for i in interface_names:
-                #measure all pps
-                continue
-            concatenated_names = ';'.join(interface_names) #join all interface names separated by ;
-            return concatenated_names.encode('utf-8') #encode string to send
+                t = threading.Thread(target=MetricCollector.get_interface_pps, args=(i, duration, interface_pps_list))
+                t.start()
+                threads.append(t)
+            
+            for t in threads:
+                t.join()
+
+            return interface_pps_list
+
+            
+            
+            
         
         elif id == BANDWIDTH:
             return MetricCollector.get_from_iperf(id, duration, client_mode, source_ip, destination_ip, False, agent, sv_id)
@@ -227,6 +250,46 @@ class MetricCollector(threading.Thread):
         else: 
             return None
 
+
+
+    #================================================================================
+    #                           GET PPS OF SINGLE INTERFACE
+    #================================================================================
+    def get_interface_pps(interface, duration, results):
+        print(f"Measuring PPS on interface '{interface}' for {duration} seconds...")
+
+        # Get initial packet counts
+        initial_stats = psutil.net_io_counters(pernic=True).get(interface)
+        if initial_stats is None:
+            print(f"Interface '{interface}' not found!")
+            results[interface] = None
+            return
+
+        initial_packets_sent = initial_stats.packets_sent
+        initial_packets_recv = initial_stats.packets_recv
+
+        # Wait for the duration
+        time.sleep(duration)
+
+        # Get final packet counts
+        final_stats = psutil.net_io_counters(pernic=True).get(interface)
+        if final_stats is None:
+            print(f"Interface '{interface}' no longer available!")
+            results[interface] = None
+            return
+
+        final_packets_sent = final_stats.packets_sent
+        final_packets_recv = final_stats.packets_recv
+
+        # Calculate PPS
+        total_packets_sent = final_packets_sent - initial_packets_sent
+        total_packets_recv = final_packets_recv - initial_packets_recv
+
+        total_pps = (total_packets_recv + total_packets_sent) / duration
+
+        results[interface] = int(total_pps)
+
+
 class IperfThread(threading.Thread):
     def __init__(self, port, ip, udp_mode):
         super().__init__()
@@ -254,6 +317,9 @@ class IperfThread(threading.Thread):
         finally:
             self.iperf_process.terminate()
             self.iperf_process.wait()
+        
+    def stop(self):
+        self.stop_event.set()
 
 
 
@@ -301,7 +367,7 @@ class Agent:
 
     #================================================================================
     #                        INITIALIZE CONNECTION WITH SERVER
-    #================================================================================
+    #================================================================================+
 
     def initialize_connection(self):
         payload = self.agent_id.encode("utf-8")
@@ -380,6 +446,7 @@ class Agent:
     #                             SEND ALERTFLOW PACKET
     #================================================================================
     def send_packet_AlertFlow(self, packet_stream):
+        print("Sending alert...")
         self.s_socket_AlertFlow.send(packet_stream)
 
 
@@ -395,16 +462,16 @@ class Agent:
             return True
         
         elif packet.flags & TASK:
-            #print("Processing TASK!")
+            print("Processing TASK!")
             self.seq_number = packet.ack_num
 
             task_id = packet.task_id
             if task_id not in self.tasks:
                 self.tasks.append(task_id)
-                #print("Now measuring metrics...")
+                print("Now measuring metrics...")
                 blocks = DataBlockServer.separate_packed_data(packet.payload)
                 for block in blocks:
-                    #print("Trying to create a metric collector!")
+                    print("Trying to create a metric collector!")
                     t = MetricCollector(self, task_id, block)
                     t.start()
                     self.threads.append(t)
@@ -412,28 +479,28 @@ class Agent:
 
             self.ack_number = self.ack_number + p_len
             response = NetTask(self.seq_number, self.ack_number, ACK)
-            #print("Sending acknowledge...")
+            print("Sending acknowledge...")
             self.s_socket_NetTask.sendto(response.to_bytes(), self.s_info_NetTask)
-            #print("Done!")
+            print("Done!")
             return True
         
         elif packet.flags & REQ:
-            #print("Got a request!")
+            print("Got a request!")
             open_requests = DataBlockClient.separate_packed_data(packet.payload)
             b = open_requests[0]
             ip = socket.inet_ntoa(b.data)
-            #print(f"Trying to create an iperf server thread with address {ip}:{self.iperf_port_counter} (udp: {b.udp_mode})")
+            print(f"Trying to create an iperf server thread with address {ip}:{self.iperf_port_counter} (udp: {b.udp_mode})")
             t = IperfThread(self.iperf_port_counter, ip, b.udp_mode)
             t.start()
             self.threads.append(t)
-            #print("Thread started!")
+            print("Thread started!")
             
             ack_packet = NetTask(0, 0, ACK, self.iperf_port_counter)
-            #print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
+            print(f"Sending ack to {address} with flags: {ack_packet.flags}!")
             self.s_socket_NetTask.sendto(ack_packet.to_bytes(), address)
             
             self.iperf_port_counter += 1
-            #print(f"Port incremented to {self.iperf_port_counter}!")          
+            print(f"Port incremented to {self.iperf_port_counter}!")          
             return True
         
         elif packet.flags & FIN:
@@ -486,6 +553,8 @@ class Agent:
 
         self.s_socket_AlertFlow.close()
         self.s_socket_NetTask.close()
+
+        print("All done!")
 
 def get_ip_address():
     while True:

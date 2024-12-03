@@ -218,6 +218,7 @@ class Server:
         #print(f"\tRaw data is {p}!")
         if p is None:
             print("\tNo data!")
+            return
         blocks = DataBlockClient.separate_packed_data(p)
         if blocks:
             for b in blocks:
@@ -249,7 +250,10 @@ class Server:
         }
 
         print(f"From agent {agent_id}:")
-        alert_list = self.agent_alerts[agent_id]
+        alert_list = self.agent_alerts.get(agent_id, None)
+        if alert_list is None:
+            print("\tUser is not registered (or error)")
+            return
         count = 1
         if not alert_list:
             print("\tNo alerts!")
@@ -267,9 +271,11 @@ class Server:
             self.send_fin(a)
             continue
 
+        self.server_socket_NetTask.close()
+
         for sock in self.alert_sockets:
             sock.close()
-            
+
         return
     
     def send_fin(self, agent_id):

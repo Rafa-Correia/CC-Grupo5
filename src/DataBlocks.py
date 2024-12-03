@@ -149,12 +149,15 @@ class DataBlockServer:
 #data blocks that are sent by the client
 class DataBlockClient:
     #                  1B        1B/4B        xB
-    def __init__(self, id = CPU, m_value = 0, data = b'', udp_mode = False):
+    def __init__(self, id = CPU, m_value = 0, data = b'', udp_mode = False, pps_list = b''):
         self.id = id
         self.m_value = m_value
         self.data = data
         self.udp_mode = udp_mode
+        self.pps_list = pps_list
         self.data_len = len(data)
+        self.n_pps = int(len(pps_list)/4)
+        
 
         #print(f"Created block with id: {self.id}, m_value: {self.m_value} and data: {self.data}")
 
@@ -165,8 +168,9 @@ class DataBlockClient:
 
         elif self.id == INTERFACE:
             #print("Packing BH")
-            packed_len = struct.pack('!BH', self.id & 0xFF, self.data_len & 0xFFFF)
-            return packed_len + self.data
+            packed_header = struct.pack('!BiH', self.id & 0xFF, self.m_value, self.data_len & 0xFFFF)
+            packed_n_pps = struct.pack('!B', self.n_pps & 0xFF)
+            return packed_header + self.data + packed_n_pps + self.pps_list
         
         elif self.id == OPEN:
             #print("Packing B4sB")
@@ -184,6 +188,7 @@ class DataBlockClient:
         data = b''
         m_value = 0
         is_udp = False
+        pps_list = b''
         
 
         #print(f"Separating {packed_blocks}")
@@ -196,10 +201,16 @@ class DataBlockClient:
             #print(f"ID is {block_id}!")
             index += 1  # Move index past the ID field
 
-            if(block_id == INTERFACE):
-                str_len = struct.unpack('!H', packed_blocks[index:index+2])[0]
-                data_length = 2 + str_len
-                data = packed_blocks[index:index + data_length]
+            if block_id == INTERFACE:
+                m_value, str_len = struct.unpack('!iH', packed_blocks[index:index+6])[0]
+                index += 6
+                data = packed_blocks[index:index + str_len]
+                index += str_len
+                n_pps = struct.unpack('!B', packed_blocks[index:index+1])
+                index += 1
+                pps_list = packed_blocks[index:index+(n_pps*4)]
+                index += n_pps*4
+                data_length = 0
             
             elif block_id == OPEN:
                 data, mode_n = struct.unpack('!4sB', packed_blocks[index:index+5])
@@ -224,7 +235,7 @@ class DataBlockClient:
             index += data_length  # Move index past the data
 
             # Create a DataBlock object with the ID and data, and store it
-            data_block = DataBlockClient(block_id, m_value, data, is_udp)
+            data_block = DataBlockClient(block_id, m_value, data, is_udp, pps_list)
             data_blocks.append(data_block)
         #print(f"DataBlocks: {str(len(data_blocks))}")
         return data_blocks

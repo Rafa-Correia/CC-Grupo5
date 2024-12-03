@@ -1,7 +1,3 @@
-import socket
-import json
-import threading
-import os
 import struct
 
 CPU         = 0

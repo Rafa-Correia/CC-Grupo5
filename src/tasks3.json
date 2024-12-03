@@ -23,8 +23,8 @@
                             "alert_con": 100,
                             "is_client": true,
                             "duration": 5,
-                            "source_ip": "10.0.1.20",
-                            "destination_ip": "10.0.2.20"
+                            "source_ip": "10.0.2.20",
+                            "destination_ip": "10.0.1.20"
                         }
                     }
                 },
@@ -38,6 +38,17 @@
                             "duration": 3,
                             "source_ip": "10.0.1.20",
                             "destination_ip": "10.0.2.20"
+                        }
+                    }
+                },
+
+                {
+                    "device_id": "a4",
+                    "device_metrics": {
+                        "interface": {
+                            "active": true,
+                            "frequency": 10,
+                            "alert_con": 1
                         }
                     }
                 }
