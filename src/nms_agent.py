@@ -54,23 +54,29 @@ class MetricCollector(threading.Thread):
                     alert_packet = AlertFlow(id, metrics)
                     with agent.lock:
                         agent.m_queue.put((alert_packet, None, None, True))
+                    time.sleep(sleep_time)
                     continue
                 else:
                     block = DataBlockClient(id, metrics)
 
             elif id == INTERFACE:
                 names = ";".join(metrics.keys()).encode("utf-8")
-                pps_list = list(metrics.values())
-                pps_list_stream = b''
 
+                to_del = []
                 for i_name, pps in metrics.items():
                     if pps > self.data_block.max_value:
                         print(f"Alert: for {i_name} -> pps is {pps}")
                         alert_packet = AlertFlow(id, pps, i_name)
                         with agent.lock:
                             agent.m_queue.put((alert_packet, None, None, True))
-                        del metrics[i_name]
+                        to_del.append(i_name)
 
+                for n in to_del:
+                    del metrics[n]
+
+                pps_list = list(metrics.values())
+                pps_list_stream = b''
+                
                 for p in pps_list:
                     pps_list_stream += struct.pack('!i', p)
 

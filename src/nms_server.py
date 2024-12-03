@@ -224,6 +224,23 @@ class Server:
             for b in blocks:
                 print(f"----------{count}----------")
                 count = count + 1
+
+                if b.id == INTERFACE:
+                    interface_names = b.data.decode("utf-8").split(";")
+                    #print(f"\t{interface_names}")
+                    pps_list_stream = b.pps_list
+                    n_pps = int(len(pps_list_stream)/4)
+                    pps_list = []
+                    i = 0
+                    while i < n_pps*4:
+                        pps_list.append(struct.unpack('!i',pps_list_stream[i:i+4])[0])
+                        i+=4
+                    #print(pps_list)
+                    i_pps = dict(zip(interface_names, pps_list))
+                    for i_name, pps in i_pps.items():
+                        print(f"\tInterface {i_name} --> {pps} packets per second.")
+                    continue
+
                 unit = ""
                 if b.id == BANDWIDTH:
                     unit = "Mbits/sec"

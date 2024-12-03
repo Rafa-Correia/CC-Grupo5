@@ -202,11 +202,11 @@ class DataBlockClient:
             index += 1  # Move index past the ID field
 
             if block_id == INTERFACE:
-                m_value, str_len = struct.unpack('!iH', packed_blocks[index:index+6])[0]
+                m_value, str_len = struct.unpack('!iH', packed_blocks[index:index+6])
                 index += 6
                 data = packed_blocks[index:index + str_len]
                 index += str_len
-                n_pps = struct.unpack('!B', packed_blocks[index:index+1])
+                n_pps = struct.unpack('!B', packed_blocks[index:index+1])[0]
                 index += 1
                 pps_list = packed_blocks[index:index+(n_pps*4)]
                 index += n_pps*4
