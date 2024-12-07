@@ -2,6 +2,7 @@ import select
 import socket
 import threading
 import random
+import datetime
 from NetTask import *
 from AlertFlow import *
 from DataBlocks import *
@@ -276,10 +277,11 @@ class Server:
             print("\tNo alerts!")
             return
         for a in alert_list:
+            dt_obj = datetime.datetime.fromtimestamp(a.timestamp)
             print(f"----------{count}----------")
-            print(f"\tMetric: {id_to_string[a.id]}\n\tMeasured Value: {a.m_value}")
+            print(f"\tMetric: {id_to_string[a.id]}\n\tMeasured Value: {a.m_value}\n\tTimestamp: {dt_obj.strftime('%Y-%m-%d %H:%M:%S')}")
             if a.payload != b'':
-                print(f"\tData: {a.payload}")
+                print(f"\tInterface: {a.payload}")
             print(f"------------------------------")
             count += 1
 
